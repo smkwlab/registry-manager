@@ -8,7 +8,8 @@ defmodule RegistryManager.GitHubAPI.Parser do
   """
 
   # Test safety check constants
-  @test_student_ids ["k92rs123", "k21rs001", "k21rs002", "k91gjk01"]
+  # Organization-specific test student IDs are supplied by callers via
+  # Config.test_student_ids; only generic patterns are built in.
   @test_repo_patterns ["test-repo"]
 
   @doc """
@@ -96,9 +97,17 @@ defmodule RegistryManager.GitHubAPI.Parser do
 
   @doc """
   テストデータの安全性チェック
+
+  `test_student_ids` には設定（Config.test_student_ids）で指定された
+  組織固有のテスト用学生IDリストを渡す。
+
+  注意: `test_student_ids` が空（デフォルト）の場合、学生ID による
+  チェックは行われず、組み込みパターン（`test-repo` プレフィックス）
+  のみで本番データを保護する。テスト用 ID を運用している組織は必ず
+  設定すること。
   """
-  def validate_test_safety(repo_name, production_mode \\ false) do
-    if production_mode and test_repository?(repo_name) do
+  def validate_test_safety(repo_name, production_mode \\ false, test_student_ids \\ []) do
+    if production_mode and test_repository?(repo_name, test_student_ids) do
       {:error,
        "SAFETY ERROR: Attempting to modify test data '#{repo_name}' in production environment!"}
     else
@@ -143,10 +152,10 @@ defmodule RegistryManager.GitHubAPI.Parser do
 
   # プライベート関数
 
-  defp test_repository?(repo_name) do
+  defp test_repository?(repo_name, test_student_ids) do
     # Check for exact student ID prefix match (e.g., "k92rs123-anything")
     student_id_match =
-      Enum.any?(@test_student_ids, fn student_id ->
+      Enum.any?(test_student_ids, fn student_id ->
         String.starts_with?(repo_name, student_id <> "-")
       end)
 
@@ -171,12 +180,18 @@ defmodule RegistryManager.GitHubAPI.Parser do
   @doc """
   コミット履歴から実際の開発者を特定
   GitHub Actionsによる自動コミットを除外し、学生による実際のコミットを優先
+
+  `org` に組織アカウント名（Config.github_org）を渡すと、そのアカウントも
+  自動化アカウントとして除外する。`nil`（デフォルト）または空文字列の場合、
+  組織アカウントの除外は行わない。
   """
-  def extract_actual_developer(commits_response) when is_list(commits_response) do
+  def extract_actual_developer(commits_response, org \\ nil)
+
+  def extract_actual_developer(commits_response, org) when is_list(commits_response) do
     commits_response
     |> Enum.map(&extract_commit_author_login/1)
     |> Enum.reject(&is_nil/1)
-    |> filter_automation_accounts()
+    |> filter_automation_accounts(org)
     |> case do
       [] ->
         {:error, "No valid commit authors found"}
@@ -192,7 +207,7 @@ defmodule RegistryManager.GitHubAPI.Parser do
     end
   end
 
-  def extract_actual_developer(_), do: {:error, "Invalid commits response format"}
+  def extract_actual_developer(_, _org), do: {:error, "Invalid commits response format"}
 
   defp extract_commit_author_login(%{"author" => %{"login" => login}}) when is_binary(login),
     do: login
@@ -201,11 +216,14 @@ defmodule RegistryManager.GitHubAPI.Parser do
 
   @doc """
   自動化アカウントを除外してフィルタリング
-  GitHub Actions、ボット、組織アカウントを除外し、学生アカウントを優先
+  GitHub Actions、ボット、組織アカウント（org 指定時）を除外し、学生アカウントを優先
+
+  `org` が `nil`（デフォルト）または空文字列の場合、組織アカウントの除外は
+  行わず、組み込みの自動化アカウントパターンのみを除外する。
   """
-  def filter_automation_accounts(logins) do
+  def filter_automation_accounts(logins, org \\ nil) do
     logins
-    |> Enum.reject(&automation_account?/1)
+    |> Enum.reject(&automation_account?(&1, org))
     |> case do
       # すべて自動化アカウントの場合は元のリストを返す
       [] -> logins
@@ -213,15 +231,17 @@ defmodule RegistryManager.GitHubAPI.Parser do
     end
   end
 
-  defp automation_account?(login) do
-    automation_patterns = [
-      "actions-user",
-      "github-actions",
-      "dependabot",
-      "renovate",
-      # 組織アカウント
-      "smkwlab"
-    ]
+  defp automation_account?(login, org) do
+    automation_patterns =
+      [
+        "actions-user",
+        "github-actions",
+        "dependabot",
+        "renovate",
+        # 組織アカウント（設定された場合のみ。空文字列は未設定扱い）
+        org
+      ]
+      |> Enum.reject(&(is_nil(&1) or &1 == ""))
 
     # 完全一致またはボットパターン
     Enum.any?(automation_patterns, fn pattern ->

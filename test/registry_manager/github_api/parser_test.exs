@@ -179,9 +179,11 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
     end
   end
 
-  describe "validate_test_safety/2" do
+  describe "validate_test_safety/3" do
+    @configured_test_ids ["k92rs123", "k21rs001", "k21rs002", "k91gjk01"]
+
     test "allows non-test repositories in production" do
-      assert :ok = Parser.validate_test_safety("k99rs999-real-repo", true)
+      assert :ok = Parser.validate_test_safety("k99rs999-real-repo", true, @configured_test_ids)
     end
 
     test "prevents test repositories in production" do
@@ -192,7 +194,9 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
       ]
 
       for repo_name <- test_repos do
-        assert {:error, error_message} = Parser.validate_test_safety(repo_name, true)
+        assert {:error, error_message} =
+                 Parser.validate_test_safety(repo_name, true, @configured_test_ids)
+
         assert String.contains?(error_message, "SAFETY ERROR")
         assert String.contains?(error_message, repo_name)
       end
@@ -207,8 +211,13 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
       ]
 
       for repo_name <- test_repos do
-        assert :ok = Parser.validate_test_safety(repo_name, false)
+        assert :ok = Parser.validate_test_safety(repo_name, false, @configured_test_ids)
       end
+    end
+
+    test "without configured test IDs only built-in patterns are checked" do
+      assert :ok = Parser.validate_test_safety("k92rs123-sotsuron", true)
+      assert {:error, _} = Parser.validate_test_safety("test-repo-example", true)
     end
   end
 
@@ -346,20 +355,33 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
     end
   end
 
-  describe "filter_automation_accounts/1" do
+  describe "filter_automation_accounts/2" do
     test "filters out common automation accounts" do
       logins = [
         "k21rs001",
         "actions-user",
         "github-actions",
         "k21rs002",
-        "dependabot[bot]",
-        "smkwlab"
+        "dependabot[bot]"
       ]
 
       filtered = Parser.filter_automation_accounts(logins)
 
       assert filtered == ["k21rs001", "k21rs002"]
+    end
+
+    test "filters out the organization account when org is given" do
+      logins = ["k21rs001", "myorg", "k21rs002"]
+
+      assert Parser.filter_automation_accounts(logins, "myorg") == ["k21rs001", "k21rs002"]
+      # org 未指定なら組織アカウント名は除外されない
+      assert Parser.filter_automation_accounts(logins) == logins
+    end
+
+    test "ignores empty-string org (defensive)" do
+      logins = ["k21rs001", "k21rs002"]
+
+      assert Parser.filter_automation_accounts(logins, "") == logins
     end
 
     test "returns original list when all accounts are automation" do

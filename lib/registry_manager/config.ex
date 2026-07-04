@@ -8,12 +8,17 @@ defmodule RegistryManager.Config do
   3. Default values
   """
 
-  # Default CSV path - absolute path for escript usage
-  @default_csv_path Path.expand(
-                      "~/SynologyDrive/semi/LaTeX/latex-ecosystem/thesis-student-registry/smkwlab.csv"
-                    )
-
-  defstruct csv_path: @default_csv_path,
+  # csv_path: optional student-roster CSV for name resolution (nil = disabled)
+  # data_repo: GitHub repository ("owner/repo") holding data/repositories.json.
+  #   Keep this repository PRIVATE when it contains real student data.
+  # test_student_ids: student IDs treated as test data by the production
+  #   safety check (organization-specific, so empty by default)
+  defstruct csv_path: nil,
+            data_repo: nil,
+            test_student_ids: [],
+            # 意図的なデフォルト: 本ツールは smkwlab がメンテナンスしており、
+            # 後方互換のため既定組織を維持する。他組織は config.json または
+            # REGISTRY_MANAGER_GITHUB_ORG で上書きする（README 参照）。
             github_org: "smkwlab",
             cache: %{
               enabled: true,
@@ -38,7 +43,9 @@ defmodule RegistryManager.Config do
         }
 
   @type t :: %__MODULE__{
-          csv_path: String.t(),
+          csv_path: String.t() | nil,
+          data_repo: String.t() | nil,
+          test_student_ids: [String.t()],
           github_org: String.t(),
           cache: cache_config(),
           api: api_config(),
@@ -65,17 +72,31 @@ defmodule RegistryManager.Config do
             optional(:enabled) => boolean(),
             optional(:ttl_hours) => integer()
           },
-          optional(:csv_path | :github_org | :log_level) => String.t()
+          optional(:csv_path | :github_org | :data_repo | :log_level) => String.t(),
+          optional(:test_student_ids) => [String.t()]
         }
   def load_env_config do
     %{}
     |> put_if_env(:csv_path, "REGISTRY_MANAGER_CSV_PATH")
     |> put_if_env(:github_org, "REGISTRY_MANAGER_GITHUB_ORG")
+    |> put_if_env(:data_repo, "REGISTRY_MANAGER_DATA_REPO")
+    |> put_test_student_ids_env()
     |> put_if_env(:log_level, "REGISTRY_MANAGER_LOG_LEVEL")
     |> put_cache_env()
     |> put_api_env()
   catch
     :throw, _ -> %{}
+  end
+
+  defp put_test_student_ids_env(config) do
+    case System.get_env("REGISTRY_MANAGER_TEST_STUDENT_IDS") do
+      nil ->
+        config
+
+      value ->
+        ids = value |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+        Map.put(config, :test_student_ids, ids)
+    end
   end
 
   defp put_if_env(config, key, env_var) do
@@ -200,6 +221,7 @@ defmodule RegistryManager.Config do
   @spec validate_config(t()) :: {:ok, t()} | {:error, String.t()}
   def validate_config(%__MODULE__{} = config) do
     with :ok <- validate_csv_path(config.csv_path),
+         :ok <- validate_data_repo(config.data_repo),
          :ok <- validate_cache_config(config.cache),
          :ok <- validate_api_config(config.api),
          :ok <- validate_log_level(config.log_level) do
@@ -207,12 +229,26 @@ defmodule RegistryManager.Config do
     end
   end
 
+  # nil = CSV integration disabled (name resolution unavailable)
+  defp validate_csv_path(nil), do: :ok
+
   defp validate_csv_path(csv_path) do
     # Skip validation if path is relative (common in tests)
     if String.starts_with?(csv_path, "/") and not File.exists?(csv_path) do
       {:error, "CSV file not found: #{csv_path}"}
     else
       :ok
+    end
+  end
+
+  # nil = not configured yet; commands needing GitHub data access report it
+  defp validate_data_repo(nil), do: :ok
+
+  defp validate_data_repo(data_repo) do
+    if Regex.match?(~r{\A[^/\s]+/[^/\s]+\z}, data_repo) do
+      :ok
+    else
+      {:error, "data_repo must be in \"owner/repo\" format: #{data_repo}"}
     end
   end
 
@@ -259,6 +295,18 @@ defmodule RegistryManager.Config do
 
       {:github_org, value}, acc when is_binary(value) ->
         %{acc | github_org: value}
+
+      {"data_repo", value}, acc when is_binary(value) ->
+        %{acc | data_repo: value}
+
+      {:data_repo, value}, acc when is_binary(value) ->
+        %{acc | data_repo: value}
+
+      {"test_student_ids", value}, acc when is_list(value) ->
+        %{acc | test_student_ids: Enum.filter(value, &is_binary/1)}
+
+      {:test_student_ids, value}, acc when is_list(value) ->
+        %{acc | test_student_ids: Enum.filter(value, &is_binary/1)}
 
       {"log_level", value}, acc when is_binary(value) ->
         %{acc | log_level: value}
@@ -346,6 +394,8 @@ defmodule RegistryManager.Config do
       base
       | csv_path: config.csv_path,
         github_org: config.github_org,
+        data_repo: config.data_repo,
+        test_student_ids: config.test_student_ids,
         cache: merge_cache_struct(base.cache, config.cache),
         api: merge_api_struct(base.api, config.api),
         log_level: config.log_level
@@ -357,6 +407,8 @@ defmodule RegistryManager.Config do
     base
     |> merge_if_present(config, :csv_path, "csv_path")
     |> merge_if_present(config, :github_org, "github_org")
+    |> merge_if_present(config, :data_repo, "data_repo")
+    |> merge_if_present(config, :test_student_ids, "test_student_ids")
     |> merge_if_present(config, :log_level, "log_level")
     |> merge_cache_map(config)
     |> merge_api_map(config)

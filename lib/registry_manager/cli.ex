@@ -223,13 +223,15 @@ defmodule RegistryManager.CLI do
     end
   end
 
-  defp parse_propagate_workflow_command([repo_name], opts), do: {:propagate_workflow, [repo_name], opts}
+  defp parse_propagate_workflow_command([repo_name], opts),
+    do: {:propagate_workflow, [repo_name], opts}
+
   defp parse_propagate_workflow_command(_, _opts), do: :help
 
   @spec process_impl(any()) :: no_return()
   defp process_impl(:help) do
     print_output("""
-    registry-manager - thesis-student-registry 管理ツール
+    registry-manager - 学生リポジトリレジストリ管理ツール
 
     使用方法:
       registry-manager <command> [options]
@@ -311,7 +313,7 @@ defmodule RegistryManager.CLI do
 
     例:
       registry-manager add k21rs001-sotsuron  # 推論形式（推奨）
-      registry-manager add smkwlab/k21rs001-wr  # org/repo形式も対応
+      registry-manager add myorg/k21rs001-wr  # org/repo形式も対応
       registry-manager add k21rs001-sotsuron k21rs001 sotsuron  # 明示的形式
       registry-manager add k21rs001-sotsuron k21rs001 sotsuron active thesis  # 非推奨
       registry-manager update k21rs001-sotsuron status completed

@@ -200,7 +200,7 @@ defmodule RegistryManager.CLITest do
       assert_success_exit(result)
 
       assert_output_contains([
-        "registry-manager - thesis-student-registry 管理ツール",
+        "registry-manager - 学生リポジトリレジストリ管理ツール",
         "使用方法:",
         "add <repo_name> <student_id> <repo_type>"
       ])

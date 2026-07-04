@@ -12,8 +12,20 @@ defmodule RegistryManager.GitHubAPI do
 
   require Logger
 
-  @registry_repo "smkwlab/thesis-student-registry"
   @registry_file_path "data/repositories.json"
+
+  # レジストリデータリポジトリは設定必須（Config.data_repo）
+  defp registry_repo do
+    case Config.load_config().data_repo do
+      nil ->
+        {:error,
+         "data_repo is not configured. Set \"data_repo\" (\"owner/repo\") in " <>
+           "~/.config/registry-manager/config.json or REGISTRY_MANAGER_DATA_REPO."}
+
+      repo ->
+        {:ok, repo}
+    end
+  end
 
   @doc """
   現在の repositories.json の内容を取得
@@ -140,7 +152,8 @@ defmodule RegistryManager.GitHubAPI do
   end
 
   defp get_repositories_json_impl do
-    with {:ok, response} <- Client.get_file_contents(@registry_repo, @registry_file_path),
+    with {:ok, repo} <- registry_repo(),
+         {:ok, response} <- Client.get_file_contents(repo, @registry_file_path),
          {:ok, {data, sha}} <- Parser.decode_file_response(response) do
       # データ読み込み時に正規化を適用
       normalized_data = Compatibility.normalize_repositories(data)
@@ -149,10 +162,11 @@ defmodule RegistryManager.GitHubAPI do
   end
 
   defp update_repositories_json_impl(new_data, current_sha, commit_message) do
-    with {:ok, encoded_content} <- Parser.encode_file_content(new_data),
+    with {:ok, repo} <- registry_repo(),
+         {:ok, encoded_content} <- Parser.encode_file_content(new_data),
          {:ok, _response} <-
            Client.update_file_contents(
-             @registry_repo,
+             repo,
              @registry_file_path,
              encoded_content,
              current_sha,
@@ -276,11 +290,12 @@ defmodule RegistryManager.GitHubAPI do
 
   defp validate_test_data_safety(new_data) do
     production_mode = Parser.detect_environment_mode() == :production
+    test_student_ids = Config.load_config().test_student_ids
 
     new_data
     |> Map.keys()
     |> Enum.find_value(fn repo_name ->
-      case Parser.validate_test_safety(repo_name, production_mode) do
+      case Parser.validate_test_safety(repo_name, production_mode, test_student_ids) do
         :ok -> nil
         {:error, reason} -> reason
       end
@@ -295,7 +310,8 @@ defmodule RegistryManager.GitHubAPI do
     full_repo_name = build_full_repo_name(repo_name)
 
     with {:ok, commits} <- Client.get_actual_developer(full_repo_name, opts),
-         {:ok, developer} <- Parser.extract_actual_developer(commits) do
+         {:ok, developer} <-
+           Parser.extract_actual_developer(commits, Config.load_config().github_org) do
       {:ok, developer}
     end
   end
