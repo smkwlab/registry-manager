@@ -123,7 +123,12 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | `wr` | 週報 | `*-wr` |
 | `ise` | ISE レポート | `*-ise-report*` |
 | `sotsuron` | 卒業論文 | `*-sotsuron` |
-| `thesis` | 論文（その他） | `*-memo*` |
+| `thesis` | 論文（その他） | `*-memo*` など |
+
+**補足**: `sotsuron` は卒業論文本体のリポジトリ、`thesis` はそれ以外の
+論文・原稿系リポジトリ（研究メモ、学会・紀要投稿原稿など）を指す。
+命名規則は推論の目安であり、`thesis` は推論に一致しない名前でも
+明示指定で登録できる。
 
 #### 2.3.2 タイプ推論ルール
 
@@ -287,6 +292,10 @@ iso8601_pattern = ~r/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/
 **時刻整合性**:
 - `repository_created_at` <= `registry_created_at` <= `registry_updated_at`
 - 未来の時刻は不可
+- **例外**: 旧形式から移行したエントリでは `registry_created_at` を
+  `updated_at` で補完する場合があり（5.1.1）、この順序が成立しない
+  ことがある。時刻整合性は新規登録エントリに対する制約であり、
+  移行データでは警告扱いとする
 
 ## 5. データ移行仕様
 
@@ -334,14 +343,17 @@ iso8601_pattern = ~r/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/
 
 **※重要**: データ移行は registry-manager 本体ではなく、独立ツール `registry-migrator` で実行（**注: registry-migrator は現時点で未実装の将来計画**。現行データは既に v4 形式に移行済みのため、当面実装予定はない）
 
+以下のコマンド例は**参考: 将来実装時のインターフェース案**であり、
+現時点で実行可能なコマンドではない。
+
 ```bash
-# データ移行の実行
+# データ移行の実行（案）
 elixir tools/registry_migrator.ex --execute
 
-# 移行状況の確認
+# 移行状況の確認（案）
 elixir tools/registry_migrator.ex --status
 
-# 移行のロールバック
+# 移行のロールバック（案）
 elixir tools/registry_migrator.ex --rollback
 ```
 
