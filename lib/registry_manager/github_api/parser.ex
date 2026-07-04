@@ -180,6 +180,10 @@ defmodule RegistryManager.GitHubAPI.Parser do
   @doc """
   コミット履歴から実際の開発者を特定
   GitHub Actionsによる自動コミットを除外し、学生による実際のコミットを優先
+
+  `org` に組織アカウント名（Config.github_org）を渡すと、そのアカウントも
+  自動化アカウントとして除外する。`nil`（デフォルト）または空文字列の場合、
+  組織アカウントの除外は行わない。
   """
   def extract_actual_developer(commits_response, org \\ nil)
 
@@ -213,6 +217,9 @@ defmodule RegistryManager.GitHubAPI.Parser do
   @doc """
   自動化アカウントを除外してフィルタリング
   GitHub Actions、ボット、組織アカウント（org 指定時）を除外し、学生アカウントを優先
+
+  `org` が `nil`（デフォルト）または空文字列の場合、組織アカウントの除外は
+  行わず、組み込みの自動化アカウントパターンのみを除外する。
   """
   def filter_automation_accounts(logins, org \\ nil) do
     logins
