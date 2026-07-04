@@ -1,125 +1,130 @@
 # Registry Manager
 
-thesis-student-registry のリポジトリ情報を GitHub API 経由で管理する Elixir escript。
+多数の学生リポジトリ（週報・レポート・卒業論文など）を一括管理するための
+リポジトリレジストリ管理ツール（Elixir escript）。
+
+GitHub 上のデータリポジトリに置いた `data/repositories.json` を GitHub API
+経由で安全に読み書きし、リポジトリの登録・更新・ブランチ保護状況の管理・
+一覧表示・ワークフロー伝播などを行います。
 
 ## 特徴
 
-- **GitHub API 統合**: GitHub API 経由での安全なデータ操作
-- **原子性**: GitHub のバージョン管理による安全な更新
-- **型安全性**: Elixir の pattern matching でデータ整合性確保
-- **一貫性**: thesis-monitor と同じアーキテクチャ
+- **GitHub API 統合**: データリポジトリへの読み書きはすべて GitHub API 経由
+- **原子性**: GitHub のバージョン管理（SHA 検証）による安全な更新
+- **並行安全性**: API レベルでの競合回避
+- **監査性**: すべての変更が Git 履歴に記録
+- **プライバシー分離**: 学生の個人情報（氏名 CSV・レジストリデータ）は
+  ツール本体から分離され、private なデータリポジトリ／ローカルファイルに保持
 
-## インストール
+## セットアップ
 
-```bash
-# 依存関係のインストール
-mix deps.get
+### 1. データリポジトリの用意
 
-# コンパイル
-mix compile
-
-# Escript のビルド
-mix escript.build
-```
-
-## 使用方法
-
-### 基本コマンド
-
-```bash
-# リポジトリ情報追加
-./registry-manager add k21rs001-sotsuron k21rs001 sotsuron active thesis
-
-# ブランチ保護設定完了マーク
-./registry-manager protect k21rs001-sotsuron
-
-# ステータス更新
-./registry-manager update k21rs001-sotsuron status completed
-
-# 統計表示
-./registry-manager status
-
-# リポジトリ一覧
-./registry-manager list
-./registry-manager list active  # フィルタ付き
-```
-
-### オプション
-
-```bash
-# ドライランモード（実際の変更なし）
-./registry-manager add k21rs001-sotsuron k21rs001 sotsuron active --dry-run
-
-# 詳細ログ表示
-./registry-manager add k21rs001-sotsuron k21rs001 sotsuron active --verbose
-
-# ヘルプ表示
-./registry-manager --help
-```
-
-## データ構造
-
-管理対象: `thesis-student-registry/data/repositories.json`
+学生リポジトリの情報を保持する **private リポジトリ** を用意し、
+`data/repositories.json` を置きます（空の `{}` から開始可能）。
 
 ```json
 {
   "k21rs001-sotsuron": {
     "student_id": "k21rs001",
     "repository_type": "sotsuron",
-    "status": "active",
-    "stage": "thesis",
-    "updated_at": "2025-06-26 10:30:37 UTC",
+    "github_username": ["k21rs001"],
+    "created_at": "2025-07-02 04:04:53 UTC",
+    "updated_at": "2025-07-02 04:04:53 UTC",
     "protection_status": "protected"
   }
 }
 ```
 
+詳細は [データ構造仕様書](docs/data-structure-specification.md) を参照。
+
+### 2. 設定ファイルの作成
+
+`~/.config/registry-manager/config.json`:
+
+```json
+{
+  "github_org": "your-org",
+  "data_repo": "your-org/your-student-registry",
+  "csv_path": "/path/to/students.csv",
+  "test_student_ids": ["k99rs998", "k99rs999"]
+}
+```
+
+| キー | 必須 | 説明 |
+|---|---|---|
+| `github_org` | 推奨 | 学生リポジトリが属する GitHub Organization |
+| `data_repo` | GitHub データ操作時に必須 | `owner/repo` 形式のデータリポジトリ |
+| `csv_path` | 任意 | 学生名簿 CSV（氏名解決用）。未設定なら氏名解決なしで動作 |
+| `test_student_ids` | 任意 | 本番データ保護チェックでテストデータ扱いする学生 ID |
+
+環境変数でも設定できます（設定ファイルが優先）:
+`REGISTRY_MANAGER_GITHUB_ORG` / `REGISTRY_MANAGER_DATA_REPO` /
+`REGISTRY_MANAGER_CSV_PATH` / `REGISTRY_MANAGER_TEST_STUDENT_IDS`（カンマ区切り）
+
+### 3. ビルド
+
+```bash
+mix deps.get
+mix escript.build
+```
+
 ## 前提条件
 
 - Elixir >= 1.14
-- GitHub CLI (認証済み)
-- thesis-student-registry リポジトリへの書き込み権限
+- GitHub CLI（`gh auth login` 済み）
+- データリポジトリへの書き込み権限
+
+## 使用方法
+
+```bash
+# リポジトリ情報追加（リポジトリ名から学生ID・種別を推論）
+./registry-manager add k21rs001-sotsuron
+
+# 明示的形式
+./registry-manager add k21rs001-sotsuron k21rs001 sotsuron
+
+# ブランチ保護設定完了マーク
+./registry-manager protect k21rs001-sotsuron
+
+# 一覧表示（フィルタ・出力形式）
+./registry-manager list --long
+./registry-manager list --type wr --format csv
+
+# データ検証
+./registry-manager validate
+
+# ワークフロー更新のドラフトブランチ伝播
+./registry-manager propagate-workflow k21rs001-sotsuron --dry-run
+
+# ヘルプ
+./registry-manager --help
+```
 
 ## 開発
 
 ```bash
-# テスト実行
-mix test
-
-# コード品質チェック
-mix credo
-mix dialyzer
-
-# フォーマット
-mix format
+mix test           # テスト実行（TDD、カバレッジ 85% 以上を維持）
+mix format         # フォーマット
+mix credo --strict # 静的解析
+mix dialyzer       # 型チェック
 ```
 
 ## アーキテクチャ
 
 - `RegistryManager.CLI`: コマンドライン処理
+- `RegistryManager.Config`: 設定管理（設定ファイル > 環境変数 > デフォルト）
 - `RegistryManager.Repository`: リポジトリ情報管理ロジック
-- `RegistryManager.GitHubAPI`: GitHub API クライアント
+- `RegistryManager.GitHubAPI`: GitHub API オーケストレーション
+  - `Client`: 外部コマンド（gh）実行
+  - `Parser`: レスポンス変換・検証（純粋関数）
 
-## 従来の bash スクリプトからの移行
+## プライバシーに関する注意
 
-### 旧 `update-repository-registry.sh`
+このツール自体は学生の個人情報を含みませんが、運用時に扱うデータ
+（`data/repositories.json`、名簿 CSV）には個人情報が含まれます。
+**データリポジトリは必ず private にし、CSV はリポジトリにコミットしないでください。**
 
-```bash
-# 旧方式（危険：ローカルファイル直接操作）
-./update-repository-registry.sh add k21rs001-sotsuron k21rs001 sotsuron active
-```
+## ライセンス
 
-### 新 `registry-manager`
-
-```bash
-# 新方式（安全：GitHub API 経由）
-./registry-manager add k21rs001-sotsuron k21rs001 sotsuron active
-```
-
-### 利点
-
-1. **データ整合性**: GitHub のバージョン管理
-2. **並行安全性**: API レベルでの競合回避
-3. **監査性**: すべての変更が Git 履歴に記録
-4. **エラーハンドリング**: Elixir の堅牢なエラー処理
-
+[MIT License](LICENSE)
