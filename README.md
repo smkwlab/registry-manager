@@ -58,9 +58,12 @@ GitHub 上のデータリポジトリに置いた `data/repositories.json` を G
 | `csv_path` | 任意 | 学生名簿 CSV（氏名解決用）。未設定なら氏名解決なしで動作 |
 | `test_student_ids` | 任意 | 本番データ保護チェックでテストデータ扱いする学生 ID |
 
-環境変数でも設定できます（設定ファイルが優先）:
+環境変数でも設定できます:
 `REGISTRY_MANAGER_GITHUB_ORG` / `REGISTRY_MANAGER_DATA_REPO` /
 `REGISTRY_MANAGER_CSV_PATH` / `REGISTRY_MANAGER_TEST_STUDENT_IDS`（カンマ区切り）
+
+優先順位は **設定ファイル > 環境変数 > デフォルト値** です（同じキーを両方で
+指定した場合は設定ファイルの値が使われます）。
 
 ### 3. ビルド
 

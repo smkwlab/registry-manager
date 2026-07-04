@@ -23,7 +23,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
     "repository_created_at": "2025-07-08T06:51:39.835808Z",
     "registry_created_at": "2025-07-08T15:00:00.000000Z",
     "registry_updated_at": "2025-07-08T15:30:00.000000Z",
-    "github_username": "mockuser3",
+    "github_username": ["mockuser3"],
     "protection_status": "protected"
   }
 }
@@ -80,7 +80,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
     "repository_created_at": "string (ISO8601)",
     "registry_created_at": "string (ISO8601)",
     "registry_updated_at": "string (ISO8601)",
-    "github_username": "string",
+    "github_username": ["string"],
     "protection_status": "string"
   }
 }
@@ -97,7 +97,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | `repository_created_at` | string | リポジトリ作成日時 | ISO8601形式 | GitHub API |
 | `registry_created_at` | string | レジストリ初回登録日時 | ISO8601形式 | registry-manager |
 | `registry_updated_at` | string | レジストリ最終更新日時 | ISO8601形式 | registry-manager |
-| `github_username` | string | GitHubユーザー名 | GitHub ID | GitHub API または推論 |
+| `github_username` | string[] | GitHubユーザー名（複数オーナー対応） | GitHub ID の配列。レガシーの string 形式も読み込み時に配列へ正規化される（`Compatibility.normalize_github_username/1`） | GitHub API または推論 |
 
 #### 2.2.2 任意フィールド
 
@@ -261,7 +261,8 @@ value1,value2,80JK059,田中太郎,value5,...
 #### 4.3.1 フォーマット検証
 
 ```elixir
-# 学生ID形式チェック
+# 学生ID形式チェック（現行の学籍番号体系: k + 入学年2桁 + 課程2文字 + 連番3桁。
+# 体系変更時は本仕様の改定とあわせて更新する）
 student_id_pattern = ~r/^k\d{2}[a-z]{2}\d{3}$/
 
 # リポジトリタイプチェック
