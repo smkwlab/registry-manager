@@ -378,6 +378,12 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
       assert Parser.filter_automation_accounts(logins) == logins
     end
 
+    test "ignores empty-string org (defensive)" do
+      logins = ["k21rs001", "k21rs002"]
+
+      assert Parser.filter_automation_accounts(logins, "") == logins
+    end
+
     test "returns original list when all accounts are automation" do
       logins = ["actions-user", "github-actions", "dependabot[bot]"]
 

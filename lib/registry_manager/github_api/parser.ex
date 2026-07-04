@@ -100,6 +100,11 @@ defmodule RegistryManager.GitHubAPI.Parser do
 
   `test_student_ids` には設定（Config.test_student_ids）で指定された
   組織固有のテスト用学生IDリストを渡す。
+
+  注意: `test_student_ids` が空（デフォルト）の場合、学生ID による
+  チェックは行われず、組み込みパターン（`test-repo` プレフィックス）
+  のみで本番データを保護する。テスト用 ID を運用している組織は必ず
+  設定すること。
   """
   def validate_test_safety(repo_name, production_mode \\ false, test_student_ids \\ []) do
     if production_mode and test_repository?(repo_name, test_student_ids) do
@@ -175,6 +180,10 @@ defmodule RegistryManager.GitHubAPI.Parser do
   @doc """
   コミット履歴から実際の開発者を特定
   GitHub Actionsによる自動コミットを除外し、学生による実際のコミットを優先
+
+  `org` に組織アカウント名（Config.github_org）を渡すと、そのアカウントも
+  自動化アカウントとして除外する。`nil`（デフォルト）または空文字列の場合、
+  組織アカウントの除外は行わない。
   """
   def extract_actual_developer(commits_response, org \\ nil)
 
@@ -208,6 +217,9 @@ defmodule RegistryManager.GitHubAPI.Parser do
   @doc """
   自動化アカウントを除外してフィルタリング
   GitHub Actions、ボット、組織アカウント（org 指定時）を除外し、学生アカウントを優先
+
+  `org` が `nil`（デフォルト）または空文字列の場合、組織アカウントの除外は
+  行わず、組み込みの自動化アカウントパターンのみを除外する。
   """
   def filter_automation_accounts(logins, org \\ nil) do
     logins
@@ -226,10 +238,10 @@ defmodule RegistryManager.GitHubAPI.Parser do
         "github-actions",
         "dependabot",
         "renovate",
-        # 組織アカウント（設定された場合のみ）
+        # 組織アカウント（設定された場合のみ。空文字列は未設定扱い）
         org
       ]
-      |> Enum.reject(&is_nil/1)
+      |> Enum.reject(&(is_nil(&1) or &1 == ""))
 
     # 完全一致またはボットパターン
     Enum.any?(automation_patterns, fn pattern ->

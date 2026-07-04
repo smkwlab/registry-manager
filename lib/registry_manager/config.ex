@@ -16,6 +16,9 @@ defmodule RegistryManager.Config do
   defstruct csv_path: nil,
             data_repo: nil,
             test_student_ids: [],
+            # 意図的なデフォルト: 本ツールは smkwlab がメンテナンスしており、
+            # 後方互換のため既定組織を維持する。他組織は config.json または
+            # REGISTRY_MANAGER_GITHUB_ORG で上書きする（README 参照）。
             github_org: "smkwlab",
             cache: %{
               enabled: true,

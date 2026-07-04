@@ -88,11 +88,18 @@ defmodule RegistryManager.Repository do
     end
   end
 
-  # csv_path 未設定（nil）の場合は {:error, :not_configured} を返す
+  # csv_path 未設定（nil）の場合は {:error, :not_configured} を返す。
+  # 読み込み失敗時はエラーメッセージ生成用にパスも返す。
   defp read_csv_file do
     case get_csv_file_path() do
-      nil -> {:error, :not_configured}
-      csv_path -> File.read(csv_path)
+      nil ->
+        {:error, :not_configured}
+
+      csv_path ->
+        case File.read(csv_path) do
+          {:ok, content} -> {:ok, content}
+          {:error, reason} -> {:error, {:read_failed, csv_path, reason}}
+        end
     end
   end
 
@@ -797,8 +804,8 @@ defmodule RegistryManager.Repository do
       {:error, :not_configured} ->
         {:error, "CSV file not configured (set csv_path to enable name resolution)"}
 
-      {:error, reason} ->
-        {:error, "CSV file not accessible at '#{get_csv_file_path()}': #{inspect(reason)}"}
+      {:error, {:read_failed, csv_path, reason}} ->
+        {:error, "CSV file not accessible at '#{csv_path}': #{inspect(reason)}"}
     end
   end
 
