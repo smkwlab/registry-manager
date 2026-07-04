@@ -157,7 +157,7 @@ Repository Name Pattern → Repository Type
 
 #### 2.5.1 標準形式
 
-**ISO8601 UTC形式**: `YYYY-MM-DDTHH:MM:SS.fffffZ`
+**ISO8601 UTC形式**: `YYYY-MM-DDTHH:MM:SS.ffffffZ`（小数部はマイクロ秒 6 桁が標準。検証は桁数可変を許容する）
 
 **例**: `2025-07-08T06:51:39.835808Z`
 
@@ -256,6 +256,10 @@ value1,value2,80JK059,田中太郎,value5,...
 
 **検証方法**: CSV データとのマッピング確認
 
+**注意**: `csv_path` は任意設定のため、CSV 未設定の環境ではこの照合は
+スキップされる（形式検証 4.3.1 のみ実施）。CSV 照合はエラーではなく
+氏名解決の可否にのみ影響する。
+
 ### 4.3 データ検証ルール
 
 #### 4.3.1 フォーマット検証
@@ -269,6 +273,8 @@ student_id_pattern = ~r/^k\d{2}[a-z]{2}\d{3}$/
 valid_types = ["wr", "ise", "sotsuron", "thesis"]
 
 # 時刻形式チェック（ISO8601）
+# 小数部は \d+ で桁数可変を許容（標準は 6 桁だが、過去データに桁数の
+# 揺れがあるため意図的に緩い検証としている）
 iso8601_pattern = ~r/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/
 ```
 
@@ -326,7 +332,7 @@ iso8601_pattern = ~r/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/
 
 #### 5.3.1 独立移行ツール仕様
 
-**※重要**: データ移行は registry-manager 本体ではなく、独立ツール `registry-migrator` で実行
+**※重要**: データ移行は registry-manager 本体ではなく、独立ツール `registry-migrator` で実行（**注: registry-migrator は現時点で未実装の将来計画**。現行データは既に v4 形式に移行済みのため、当面実装予定はない）
 
 ```bash
 # データ移行の実行
