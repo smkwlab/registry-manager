@@ -1,0 +1,2 @@
+lib/registry_manager/cli.ex:9:7:no_return Function main/1 has no local return.
+lib/registry_manager/cli.ex:112:8:no_return Function process/1 has no local return.
