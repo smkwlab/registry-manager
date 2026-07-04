@@ -76,14 +76,23 @@ defmodule RegistryManager.Repository do
   CSVファイルから GitHub username を取得
   """
   def get_github_username_from_csv(student_id) do
-    csv_path = get_csv_file_path()
-
-    case File.read(csv_path) do
+    case read_csv_file() do
       {:ok, content} ->
         parse_github_username_from_csv(content, student_id)
 
+      {:error, :not_configured} ->
+        {:error, "CSV file not configured"}
+
       {:error, _reason} ->
         {:error, "CSV file not accessible"}
+    end
+  end
+
+  # csv_path 未設定（nil）の場合は {:error, :not_configured} を返す
+  defp read_csv_file do
+    case get_csv_file_path() do
+      nil -> {:error, :not_configured}
+      csv_path -> File.read(csv_path)
     end
   end
 
@@ -93,8 +102,10 @@ defmodule RegistryManager.Repository do
         Path.join([File.cwd!(), "test/fixtures/test_students.csv"])
 
       _ ->
-        config = Config.load_config()
-        Path.expand(config.csv_path)
+        case Config.load_config().csv_path do
+          nil -> nil
+          csv_path -> Path.expand(csv_path)
+        end
     end
   end
 
@@ -354,7 +365,7 @@ defmodule RegistryManager.Repository do
   安全のため確認プロンプト付き（--confirmは非推奨のため削除）
   """
   def build_github_deletion_command(repo_name) do
-    "gh repo delete smkwlab/#{repo_name}"
+    "gh repo delete #{Config.load_config().github_org}/#{repo_name}"
   end
 
   @doc """
@@ -590,7 +601,7 @@ defmodule RegistryManager.Repository do
     if String.contains?(repo_name, "/") do
       repo_name
     else
-      "smkwlab/#{repo_name}"
+      "#{Config.load_config().github_org}/#{repo_name}"
     end
   end
 
@@ -724,11 +735,12 @@ defmodule RegistryManager.Repository do
   CSVファイルからGitHub usernameで学生IDを検索
   """
   def get_student_id_from_csv_by_github(github_username) do
-    csv_path = get_csv_file_path()
-
-    case File.read(csv_path) do
+    case read_csv_file() do
       {:ok, content} ->
         parse_student_id_from_github_username(content, github_username)
+
+      {:error, :not_configured} ->
+        {:error, "CSV file not configured"}
 
       {:error, _reason} ->
         {:error, "CSV file not accessible"}
@@ -772,9 +784,7 @@ defmodule RegistryManager.Repository do
   CSVファイルから全学生データを読み込み、List コマンドで使用可能な形式に変換
   """
   def get_all_students_from_csv do
-    csv_path = get_csv_file_path()
-
-    case File.read(csv_path) do
+    case read_csv_file() do
       {:ok, content} ->
         try do
           students = parse_all_students_from_csv(content)
@@ -784,8 +794,11 @@ defmodule RegistryManager.Repository do
             {:error, "CSV parsing failed: #{Exception.message(error)}"}
         end
 
+      {:error, :not_configured} ->
+        {:error, "CSV file not configured (set csv_path to enable name resolution)"}
+
       {:error, reason} ->
-        {:error, "CSV file not accessible at '#{csv_path}': #{inspect(reason)}"}
+        {:error, "CSV file not accessible at '#{get_csv_file_path()}': #{inspect(reason)}"}
     end
   end
 

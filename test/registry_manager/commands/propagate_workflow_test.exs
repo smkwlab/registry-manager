@@ -164,7 +164,9 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
     test "returns dry_run info when --dry-run is set" do
       test_params = [
         branches: %{"test-repo" => ["0th-draft", "1st-draft", "2nd-draft"]},
-        compare_results: %{"test-repo" => [{"main", "0th-draft", 2}, {"1st-draft", "2nd-draft", 3}]}
+        compare_results: %{
+          "test-repo" => [{"main", "0th-draft", 2}, {"1st-draft", "2nd-draft", 3}]
+        }
       ]
 
       {:ok, result} =
@@ -191,14 +193,14 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
   describe "format_results/2" do
     test "formats no_action_needed result" do
       results = [{"test-repo", {:ok, :no_action_needed}}]
-      output = PropagateWorkflow.format_results(results, [dry_run: false])
+      output = PropagateWorkflow.format_results(results, dry_run: false)
 
       assert output =~ "✅ test-repo: All branches OK"
     end
 
     test "formats dry_run result with issues" do
       results = [{"test-repo", {:ok, {:dry_run, [{"main", "0th-draft", 2}]}}}]
-      output = PropagateWorkflow.format_results(results, [dry_run: true])
+      output = PropagateWorkflow.format_results(results, dry_run: true)
 
       assert output =~ "📋 test-repo: Would merge:"
       assert output =~ "0th-draft is missing 2 commits from main"
@@ -206,14 +208,14 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
 
     test "formats propagated result" do
       results = [{"test-repo", {:ok, {:propagated, 2}}}]
-      output = PropagateWorkflow.format_results(results, [dry_run: false])
+      output = PropagateWorkflow.format_results(results, dry_run: false)
 
       assert output =~ "✅ test-repo: Propagated 2 branch(es)"
     end
 
     test "formats error result" do
       results = [{"test-repo", {:error, "Failed to clone"}}]
-      output = PropagateWorkflow.format_results(results, [dry_run: false])
+      output = PropagateWorkflow.format_results(results, dry_run: false)
 
       assert output =~ "❌ test-repo: Error - Failed to clone"
     end
@@ -361,7 +363,8 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
           ".github/workflows/prevent-draft-merge.yml" => "new content"
         },
         current_files: %{
-          "test-repo" => %{}  # File doesn't exist in target
+          # File doesn't exist in target
+          "test-repo" => %{}
         },
         mock_git: true
       ]
@@ -381,7 +384,8 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
       test_params = [
         branches: %{"test-repo" => ["0th-draft"]},
         compare_results: %{"test-repo" => []},
-        template_files: %{},  # Template file doesn't exist
+        # Template file doesn't exist
+        template_files: %{},
         current_files: %{
           "test-repo" => %{
             ".github/workflows/prevent-draft-merge.yml" => "existing content"

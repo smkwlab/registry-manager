@@ -324,7 +324,8 @@ defmodule RegistryManager.RepositoryInferenceTest do
   describe "validate_add_request_for_inference/3" do
     test "accepts valid data without repository name validation" do
       # This should pass even though repository name doesn't match student ID
-      assert :ok = Repository.validate_add_request_for_inference("sampleuser-wr", "k91rs012", "wr")
+      assert :ok =
+               Repository.validate_add_request_for_inference("sampleuser-wr", "k91rs012", "wr")
 
       assert :ok =
                Repository.validate_add_request_for_inference("my-thesis", "k21rs001", "sotsuron")

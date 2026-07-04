@@ -168,7 +168,7 @@ defmodule RegistryManager.Validation do
       {:error, "リポジトリ名と学生IDが一致しません: k21rs002-sotsuron should start with k21rs001-"}
   """
   def validate_repository_name(repo_name, student_id) do
-    # Remove org prefix if present (e.g., "smkwlab/" from "smkwlab/k21rs001-sotsuron")
+    # Remove org prefix if present (e.g., "myorg/" from "myorg/k21rs001-sotsuron")
     base_repo_name = String.replace(repo_name, ~r{^[^/]+/}, "")
     expected_prefix = "#{student_id}-"
 

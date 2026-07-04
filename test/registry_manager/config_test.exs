@@ -19,6 +19,8 @@ defmodule RegistryManager.ConfigTest do
     # 環境変数をクリア
     System.delete_env("REGISTRY_MANAGER_CSV_PATH")
     System.delete_env("REGISTRY_MANAGER_GITHUB_ORG")
+    System.delete_env("REGISTRY_MANAGER_DATA_REPO")
+    System.delete_env("REGISTRY_MANAGER_TEST_STUDENT_IDS")
     System.delete_env("REGISTRY_MANAGER_CACHE_ENABLED")
     System.delete_env("REGISTRY_MANAGER_CACHE_TTL_HOURS")
     System.delete_env("REGISTRY_MANAGER_API_TIMEOUT")
@@ -42,9 +44,11 @@ defmodule RegistryManager.ConfigTest do
     test "returns default configuration values" do
       config = Config.default_config()
 
-      # CSV path should be absolute path for escript usage
-      assert String.starts_with?(config.csv_path, "/")
-      assert String.ends_with?(config.csv_path, "smkwlab.csv")
+      # CSV integration is optional and disabled by default
+      assert config.csv_path == nil
+      # Data repository must be configured explicitly
+      assert config.data_repo == nil
+      assert config.test_student_ids == []
       assert config.github_org == "smkwlab"
       assert config.cache.enabled == true
       assert config.cache.ttl_hours == 1
@@ -59,6 +63,8 @@ defmodule RegistryManager.ConfigTest do
     test "loads configuration from environment variables" do
       System.put_env("REGISTRY_MANAGER_CSV_PATH", "/custom/path.csv")
       System.put_env("REGISTRY_MANAGER_GITHUB_ORG", "custom_org")
+      System.put_env("REGISTRY_MANAGER_DATA_REPO", "custom_org/data-repo")
+      System.put_env("REGISTRY_MANAGER_TEST_STUDENT_IDS", "k99rs001, k99rs002")
       System.put_env("REGISTRY_MANAGER_CACHE_ENABLED", "false")
       System.put_env("REGISTRY_MANAGER_CACHE_TTL_HOURS", "2")
       System.put_env("REGISTRY_MANAGER_API_TIMEOUT", "30")
@@ -68,6 +74,8 @@ defmodule RegistryManager.ConfigTest do
 
       assert config.csv_path == "/custom/path.csv"
       assert config.github_org == "custom_org"
+      assert config.data_repo == "custom_org/data-repo"
+      assert config.test_student_ids == ["k99rs001", "k99rs002"]
       assert config.cache.enabled == false
       assert config.cache.ttl_hours == 2
       assert config.api.timeout_seconds == 30
@@ -99,6 +107,8 @@ defmodule RegistryManager.ConfigTest do
       user_config = %{
         "csv_path" => "/user/path.csv",
         "github_org" => "user_org",
+        "data_repo" => "user_org/student-registry",
+        "test_student_ids" => ["k99rs001"],
         "cache" => %{
           "enabled" => false,
           "ttl_hours" => 3
@@ -116,6 +126,8 @@ defmodule RegistryManager.ConfigTest do
       # load_user_config は raw map を返すようになった
       assert config["csv_path"] == "/user/path.csv"
       assert config["github_org"] == "user_org"
+      assert config["data_repo"] == "user_org/student-registry"
+      assert config["test_student_ids"] == ["k99rs001"]
       assert config["cache"]["enabled"] == false
       assert config["cache"]["ttl_hours"] == 3
       assert config["api"]["timeout_seconds"] == 45
@@ -183,9 +195,9 @@ defmodule RegistryManager.ConfigTest do
       non_existent_file = Path.join(System.tmp_dir!(), "non_existent.json")
       config = Config.load_config(non_existent_file)
 
-      # デフォルト値が返される（絶対パス）
-      assert String.starts_with?(config.csv_path, "/")
-      assert String.ends_with?(config.csv_path, "smkwlab.csv")
+      # デフォルト値が返される
+      assert config.csv_path == nil
+      assert config.data_repo == nil
       assert config.github_org == "smkwlab"
     end
   end
@@ -207,6 +219,21 @@ defmodule RegistryManager.ConfigTest do
       config = %{Config.default_config() | csv_path: "/non/existent/path.csv"}
 
       assert {:error, "CSV file not found: /non/existent/path.csv"} =
+               Config.validate_config(config)
+    end
+
+    test "accepts nil CSV path (name resolution disabled)" do
+      config = %{Config.default_config() | csv_path: nil}
+      assert {:ok, ^config} = Config.validate_config(config)
+    end
+
+    test "validates data_repo format" do
+      config = %{Config.default_config() | data_repo: "org/repo"}
+      assert {:ok, ^config} = Config.validate_config(config)
+
+      config = %{Config.default_config() | data_repo: "missing-org-part"}
+
+      assert {:error, "data_repo must be in \"owner/repo\" format: missing-org-part"} =
                Config.validate_config(config)
     end
 
@@ -239,6 +266,8 @@ defmodule RegistryManager.ConfigTest do
       map_config = %{
         "csv_path" => "/test/path.csv",
         "github_org" => "test_org",
+        "data_repo" => "test_org/registry-data",
+        "test_student_ids" => ["k99rs001", "k99rs002"],
         "cache" => %{
           "enabled" => true,
           "ttl_hours" => 2,
@@ -256,6 +285,8 @@ defmodule RegistryManager.ConfigTest do
       assert %Config{} = config
       assert config.csv_path == "/test/path.csv"
       assert config.github_org == "test_org"
+      assert config.data_repo == "test_org/registry-data"
+      assert config.test_student_ids == ["k99rs001", "k99rs002"]
       assert config.cache.enabled == true
       assert config.cache.ttl_hours == 2
       assert config.cache.max_size_mb == 100

@@ -196,7 +196,13 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
           {:ok, {:dry_run, %{template_updates: template_updates, branch_issues: branch_issues}}}
 
         true ->
-          apply_template_and_propagate(repo_name, template_updates, branch_issues, opts, test_params)
+          apply_template_and_propagate(
+            repo_name,
+            template_updates,
+            branch_issues,
+            opts,
+            test_params
+          )
       end
     end
   end
@@ -233,7 +239,8 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
           case {get_file_content(config.github_org, template_repo, file, "main"),
                 get_file_content(config.github_org, repo_name, file, "main")} do
             # Both files exist and are different - needs update
-            {{:ok, template_content}, {:ok, current_content}} when template_content != current_content ->
+            {{:ok, template_content}, {:ok, current_content}}
+            when template_content != current_content ->
               {:cont, {:ok, [file | acc]}}
 
             # Both files exist and are the same - no update needed
@@ -313,11 +320,22 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
 
     try do
       with {:ok, _} <-
-             run_git_command(["clone", "--quiet", "git@github.com:#{full_repo_name}.git", work_dir]) do
+             run_git_command([
+               "clone",
+               "--quiet",
+               "git@github.com:#{full_repo_name}.git",
+               work_dir
+             ]) do
         # Step 1: Apply template updates to main branch
         template_count =
           if not Enum.empty?(template_updates) do
-            apply_template_files(work_dir, config.github_org, template_repo, template_updates, opts)
+            apply_template_files(
+              work_dir,
+              config.github_org,
+              template_repo,
+              template_updates,
+              opts
+            )
           else
             0
           end
@@ -326,7 +344,8 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
         # This ensures changes flow through the entire branch hierarchy
         branch_count = propagate_through_all_branches(work_dir, opts)
 
-        {:ok, {:applied_and_propagated, %{template_files: template_count, branches: branch_count}}}
+        {:ok,
+         {:applied_and_propagated, %{template_files: template_count, branches: branch_count}}}
       else
         {:error, reason} ->
           {:error, "Failed to clone: #{reason}"}
@@ -660,7 +679,8 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     "✅ #{repo_name}: All branches OK"
   end
 
-  defp format_single_result(repo_name, {:ok, {:dry_run, issues}}, _dry_run) when is_list(issues) do
+  defp format_single_result(repo_name, {:ok, {:dry_run, issues}}, _dry_run)
+       when is_list(issues) do
     issue_lines =
       Enum.map(issues, fn {lower, upper, ahead_by} ->
         "   - #{upper} is missing #{ahead_by} commits from #{lower}"
@@ -669,7 +689,11 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     "📋 #{repo_name}: Would merge:\n" <> Enum.join(issue_lines, "\n")
   end
 
-  defp format_single_result(repo_name, {:ok, {:dry_run, %{template_updates: updates, branch_issues: issues}}}, _dry_run) do
+  defp format_single_result(
+         repo_name,
+         {:ok, {:dry_run, %{template_updates: updates, branch_issues: issues}}},
+         _dry_run
+       ) do
     lines = []
 
     lines =
@@ -699,7 +723,11 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     "✅ #{repo_name}: Propagated #{count} branch(es)"
   end
 
-  defp format_single_result(repo_name, {:ok, {:applied_and_propagated, %{template_files: files, branches: branches}}}, _dry_run) do
+  defp format_single_result(
+         repo_name,
+         {:ok, {:applied_and_propagated, %{template_files: files, branches: branches}}},
+         _dry_run
+       ) do
     "✅ #{repo_name}: Applied #{files} file(s), propagated to #{branches} branch(es)"
   end
 
