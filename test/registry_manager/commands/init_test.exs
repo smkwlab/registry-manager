@@ -193,6 +193,16 @@ defmodule RegistryManager.Commands.InitTest do
   end
 
   describe "run/3 failure guidance" do
+    test "returns an error instead of raising when the config path is not writable" do
+      # 非 root では作成できないパス
+      config_path = "/nonexistent-root-dir/registry-manager/config.json"
+
+      deps = %{api: api_bootstrap_stub(self()), output: output_stub(), config_path: config_path}
+
+      assert {:error, :config_write_failed} = Init.run(["testorg/test-registry"], [], deps)
+      assert Enum.any?(collect_output(:error), &(&1 =~ "config"))
+    end
+
     test "fails with gh auth guidance when authentication is unavailable" do
       config_path = tmp_config_path()
 

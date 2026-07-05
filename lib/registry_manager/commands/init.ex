@@ -200,10 +200,15 @@ defmodule RegistryManager.Commands.Init do
   end
 
   defp write_config(config_path, config, output) do
-    File.mkdir_p!(Path.dirname(config_path))
-    File.write!(config_path, Jason.encode!(config, pretty: true) <> "\n")
-    call(output, :success, "✓ config を書き込みました: #{config_path}")
-    :ok
+    with :ok <- File.mkdir_p(Path.dirname(config_path)),
+         :ok <- File.write(config_path, Jason.encode!(config, pretty: true) <> "\n") do
+      call(output, :success, "✓ config を書き込みました: #{config_path}")
+      :ok
+    else
+      {:error, reason} ->
+        call(output, :error, "config の書き込みに失敗しました: #{config_path} (#{reason})")
+        {:error, :config_write_failed}
+    end
   end
 
   # --- 仕上げ ---
