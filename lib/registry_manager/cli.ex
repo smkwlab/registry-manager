@@ -6,6 +6,7 @@ defmodule RegistryManager.CLI do
   alias RegistryManager.Commands.Cache
   alias RegistryManager.Commands.Edit
   alias RegistryManager.Commands.InferStudentId
+  alias RegistryManager.Commands.Init
   alias RegistryManager.Commands.List
   alias RegistryManager.Commands.Migrate
   alias RegistryManager.Commands.PropagateWorkflow
@@ -76,7 +77,8 @@ defmodule RegistryManager.CLI do
           review_requested: :boolean,
           sort: :string,
           all: :boolean,
-          from_template: :boolean
+          from_template: :boolean,
+          org: :string
         ],
         aliases: [
           h: :help,
@@ -128,6 +130,7 @@ defmodule RegistryManager.CLI do
   defp command_parser_map do
     %{
       "add" => &parse_add_command/2,
+      "init" => &parse_init_command/2,
       "update" => &parse_update_command/2,
       "remove" => &parse_remove_command/2,
       "protect" => &parse_protect_command/2,
@@ -161,6 +164,9 @@ defmodule RegistryManager.CLI do
   end
 
   defp parse_add_command(_, _opts), do: :help
+
+  defp parse_init_command(args, opts) when length(args) <= 1, do: {:init, args, opts}
+  defp parse_init_command(_, _opts), do: :help
 
   defp parse_update_command([repo_name, field, value], opts) do
     {:update, {repo_name, field, value}, opts}
@@ -237,6 +243,12 @@ defmodule RegistryManager.CLI do
       registry-manager <command> [options]
 
     コマンド:
+      init [owner/repo]
+          レジストリデータリポジトリの bootstrap（private repo 作成・
+          data/registry.json と README の初期投入・config 生成、冪等）
+          省略時は <org>/thesis-student-registry。--org で組織指定、
+          --force で既存 config を上書き
+
       add <repo_name>
           リポジトリ情報を新規登録（推論形式・推奨）
           GitHub APIからリポジトリ情報を取得し、CSVから学生IDを特定
@@ -339,6 +351,13 @@ defmodule RegistryManager.CLI do
     """)
 
     exit_with_code(0)
+  end
+
+  defp process_impl({:init, args, opts}) do
+    case Init.run(args, opts) do
+      {:ok, _repo} -> exit_with_code(0)
+      {:error, _reason} -> exit_with_code(1)
+    end
   end
 
   defp process_impl({:add_auto, repo_name, opts}) do

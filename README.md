@@ -19,6 +19,23 @@ GitHub 上のレジストリデータリポジトリに置いた `data/registry.
 
 ## セットアップ
 
+### 一括セットアップ（推奨）: `init`
+
+```bash
+# private データリポジトリの作成 + data/registry.json / README の初期投入 +
+# ~/.config/registry-manager/config.json の生成までを冪等に行う
+registry-manager init your-org/your-student-registry
+
+# 既存の config を上書きする場合
+registry-manager init your-org/your-student-registry --force
+```
+
+既存のリポジトリ・ファイル・config は上書きせずスキップして報告します。
+読み取り側（監視ツール）のセットアップは
+[thesis-monitor](https://github.com/smkwlab/thesis-monitor) の `init` を使用してください。
+
+以下は手動でセットアップする場合の手順です。
+
 ### 1. データリポジトリの用意
 
 学生リポジトリの情報を保持する **private リポジトリ** を用意し、
