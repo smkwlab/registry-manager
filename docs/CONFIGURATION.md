@@ -41,7 +41,7 @@ config :registry_manager,
   github_token: System.get_env("GITHUB_TOKEN"),
   organization: "smkwlab",
   repository: "thesis-student-registry",
-  file_path: "data/repositories.json",
+  file_path: "data/registry.json",
   
   # キャッシュ設定
   cache_ttl: 300,  # 秒単位（5分）
@@ -77,7 +77,7 @@ config :registry_manager,
 | `github_token` | `nil` | GitHub API アクセストークン |
 | `organization` | `"smkwlab"` | GitHub組織名 |
 | `repository` | `"thesis-student-registry"` | データリポジトリ名 |
-| `file_path` | `"data/repositories.json"` | レジストリデータファイルパス |
+| `file_path` | `"data/registry.json"` | レジストリデータファイルパス（旧名 repositories.json は移行期間中のみ fallback） |
 
 #### キャッシュ設定
 
