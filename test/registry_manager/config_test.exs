@@ -19,6 +19,7 @@ defmodule RegistryManager.ConfigTest do
     # 環境変数をクリア
     System.delete_env("REGISTRY_MANAGER_CSV_PATH")
     System.delete_env("REGISTRY_MANAGER_GITHUB_ORG")
+    System.delete_env("REGISTRY_MANAGER_REGISTRY_REPO")
     System.delete_env("REGISTRY_MANAGER_DATA_REPO")
     System.delete_env("REGISTRY_MANAGER_TEST_STUDENT_IDS")
     System.delete_env("REGISTRY_MANAGER_CACHE_ENABLED")
@@ -46,8 +47,8 @@ defmodule RegistryManager.ConfigTest do
 
       # CSV integration is optional and disabled by default
       assert config.csv_path == nil
-      # Data repository must be configured explicitly
-      assert config.data_repo == nil
+      # Registry data repository must be configured explicitly
+      assert config.registry_repo == nil
       assert config.test_student_ids == []
       assert config.github_org == "smkwlab"
       assert config.cache.enabled == true
@@ -56,6 +57,72 @@ defmodule RegistryManager.ConfigTest do
       assert config.api.timeout_seconds == 15
       assert config.api.max_concurrent == 8
       assert config.log_level == "info"
+    end
+  end
+
+  describe "registry_repo key (issue #8)" do
+    test "map_to_struct sets registry_repo from string and atom keys" do
+      assert Config.map_to_struct(%{"registry_repo" => "org/reg"}).registry_repo == "org/reg"
+      assert Config.map_to_struct(%{registry_repo: "org/reg"}).registry_repo == "org/reg"
+    end
+
+    test "load_env_config reads REGISTRY_MANAGER_REGISTRY_REPO" do
+      System.put_env("REGISTRY_MANAGER_REGISTRY_REPO", "org/registry-data")
+
+      config = Config.load_env_config()
+      assert config.registry_repo == "org/registry-data"
+    end
+
+    test "legacy REGISTRY_MANAGER_DATA_REPO is migrated with a warning" do
+      System.put_env("REGISTRY_MANAGER_DATA_REPO", "org/legacy-data")
+
+      {config, stderr} =
+        with_io(:stderr, fn ->
+          Config.load_config("/nonexistent/config.json")
+        end)
+
+      assert config.registry_repo == "org/legacy-data"
+      assert stderr =~ "deprecated"
+      assert stderr =~ "registry_repo"
+    end
+
+    test "legacy data_repo JSON key is migrated with a warning", %{config_file: config_file} do
+      File.write!(config_file, Jason.encode!(%{"data_repo" => "org/legacy-json"}))
+
+      {config, stderr} =
+        with_io(:stderr, fn ->
+          Config.load_config(config_file)
+        end)
+
+      assert config.registry_repo == "org/legacy-json"
+      assert stderr =~ "deprecated"
+      assert stderr =~ "registry_repo"
+    end
+
+    test "registry_repo wins over legacy data_repo with an ignored warning",
+         %{config_file: config_file} do
+      File.write!(
+        config_file,
+        Jason.encode!(%{"registry_repo" => "org/new", "data_repo" => "org/old"})
+      )
+
+      {config, stderr} =
+        with_io(:stderr, fn ->
+          Config.load_config(config_file)
+        end)
+
+      assert config.registry_repo == "org/new"
+      assert stderr =~ "ignored"
+    end
+
+    test "validates registry_repo format" do
+      config = %{Config.default_config() | registry_repo: "org/repo"}
+      assert {:ok, _} = Config.validate_config(config)
+
+      config = %{Config.default_config() | registry_repo: "missing-org-part"}
+
+      assert {:error, "registry_repo must be in \"owner/repo\" format: missing-org-part"} =
+               Config.validate_config(config)
     end
   end
 
@@ -197,7 +264,7 @@ defmodule RegistryManager.ConfigTest do
 
       # デフォルト値が返される
       assert config.csv_path == nil
-      assert config.data_repo == nil
+      assert config.registry_repo == nil
       assert config.github_org == "smkwlab"
     end
   end
@@ -225,16 +292,6 @@ defmodule RegistryManager.ConfigTest do
     test "accepts nil CSV path (name resolution disabled)" do
       config = %{Config.default_config() | csv_path: nil}
       assert {:ok, ^config} = Config.validate_config(config)
-    end
-
-    test "validates data_repo format" do
-      config = %{Config.default_config() | data_repo: "org/repo"}
-      assert {:ok, ^config} = Config.validate_config(config)
-
-      config = %{Config.default_config() | data_repo: "missing-org-part"}
-
-      assert {:error, "data_repo must be in \"owner/repo\" format: missing-org-part"} =
-               Config.validate_config(config)
     end
 
     test "validates cache TTL range" do
@@ -266,7 +323,7 @@ defmodule RegistryManager.ConfigTest do
       map_config = %{
         "csv_path" => "/test/path.csv",
         "github_org" => "test_org",
-        "data_repo" => "test_org/registry-data",
+        "registry_repo" => "test_org/registry-data",
         "test_student_ids" => ["k99rs001", "k99rs002"],
         "cache" => %{
           "enabled" => true,
@@ -285,7 +342,7 @@ defmodule RegistryManager.ConfigTest do
       assert %Config{} = config
       assert config.csv_path == "/test/path.csv"
       assert config.github_org == "test_org"
-      assert config.data_repo == "test_org/registry-data"
+      assert config.registry_repo == "test_org/registry-data"
       assert config.test_student_ids == ["k99rs001", "k99rs002"]
       assert config.cache.enabled == true
       assert config.cache.ttl_hours == 2

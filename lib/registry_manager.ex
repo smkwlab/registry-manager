@@ -2,7 +2,7 @@ defmodule RegistryManager do
   @moduledoc """
   Registry Manager
 
-  GitHub API経由で学生リポジトリレジストリ（設定 data_repo で指定した
+  GitHub API経由で学生リポジトリレジストリ（設定 registry_repo で指定した
   データリポジトリの data/repositories.json）を管理するツール。
   """
 
