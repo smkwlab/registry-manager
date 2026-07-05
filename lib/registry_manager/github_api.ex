@@ -37,7 +37,7 @@ defmodule RegistryManager.GitHubAPI do
         {:ok, response}
 
       {:error, message} = error ->
-        if not_found?(message) do
+        if Client.not_found_error?(message) do
           fetch_fn.(@legacy_registry_file_path)
         else
           error
@@ -55,7 +55,7 @@ defmodule RegistryManager.GitHubAPI do
 
       {:error, message} = error ->
         cond do
-          not not_found?(message) ->
+          not Client.not_found_error?(message) ->
             error
 
           match?({:ok, _}, fetch_fn.(@legacy_registry_file_path)) ->
@@ -66,9 +66,6 @@ defmodule RegistryManager.GitHubAPI do
         end
     end
   end
-
-  defp not_found?(message) when is_binary(message), do: String.contains?(message, "(404)")
-  defp not_found?(_), do: false
 
   @doc """
   現在のレジストリファイル（registry.json、旧名 repositories.json）の内容を取得

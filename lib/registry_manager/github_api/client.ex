@@ -54,6 +54,17 @@ defmodule RegistryManager.GitHubAPI.Client do
   end
 
   @doc """
+  send_request/3 が返したエラーメッセージが 404 (Not Found) かを判定
+
+  エラーメッセージ形式（"GitHub API error (STATUS): ..."）は本モジュールが
+  生成するため、形式を変更する場合はこの述語も併せて更新すること。
+  """
+  def not_found_error?(message) when is_binary(message),
+    do: String.contains?(message, "GitHub API error (404)")
+
+  def not_found_error?(_), do: false
+
+  @doc """
   リポジトリのファイル内容を取得
   """
   def get_file_contents(repo, file_path) do
