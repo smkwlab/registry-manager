@@ -14,6 +14,10 @@ defmodule RegistryManager.Commands.Init do
   @registry_file_path "data/registry.json"
   @readme_path "README.md"
 
+  # 既定組織は Config の既定値と同じ意図（本ツールの保守元）。他組織は
+  # --org または owner/repo 引数で指定する
+  @default_org "smkwlab"
+
   @initial_registry_content "{}\n"
 
   def run(args, opts, deps \\ %{}) do
@@ -35,7 +39,7 @@ defmodule RegistryManager.Commands.Init do
   # --- 対象リポジトリの解決 ---
 
   defp resolve_repo(args, opts, output) do
-    org = opts[:org] || "smkwlab"
+    org = opts[:org] || @default_org
     repo = List.first(args) || "#{org}/thesis-student-registry"
 
     if Regex.match?(~r{\A[^/\s]+/[^/\s]+\z}, repo) do
@@ -184,7 +188,7 @@ defmodule RegistryManager.Commands.Init do
         write_config(config_path, proposed, output)
 
       opts[:force] ->
-        merged = config_path |> File.read!() |> Jason.decode!() |> Map.merge(proposed)
+        merged = Map.merge(read_existing_config(config_path, output), proposed)
         write_config(config_path, merged, output)
 
       true ->
@@ -196,6 +200,18 @@ defmodule RegistryManager.Commands.Init do
         )
 
         :ok
+    end
+  end
+
+  # --force 時のマージ元。壊れた JSON は警告して空扱い（proposed のみで書き直す）
+  defp read_existing_config(config_path, output) do
+    with {:ok, content} <- File.read(config_path),
+         {:ok, config} when is_map(config) <- Jason.decode(content) do
+      config
+    else
+      _ ->
+        call(output, :warn, "既存の config を解析できません（--force 指定のため新しい値で書き直します）: #{config_path}")
+        %{}
     end
   end
 

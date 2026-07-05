@@ -77,7 +77,11 @@ defmodule RegistryManager.Commands.InitTest do
       assert_received {:api, :create_registry_file, file_body}
       assert Base.decode64!(file_body[:content]) =~ "{}"
 
-      assert_received {:api, :create_readme, _}
+      assert_received {:api, :create_readme, readme_body}
+      readme = Base.decode64!(readme_body[:content])
+      assert String.starts_with?(readme, "# test-registry\n")
+      refute readme =~ ~r/^\s+#/m
+      assert readme =~ "private"
 
       config = Jason.decode!(File.read!(config_path))
       assert config["registry_repo"] == "testorg/test-registry"
@@ -169,6 +173,20 @@ defmodule RegistryManager.Commands.InitTest do
       config = Jason.decode!(File.read!(config_path))
       assert config["registry_repo"] == "old/repo"
       assert Enum.any?(collect_output(:warn), &(&1 =~ "--force"))
+    end
+
+    test "recovers from a corrupt existing config with --force" do
+      config_path = tmp_config_path()
+      File.write!(config_path, "{ broken json")
+      on_exit(fn -> File.rm(config_path) end)
+
+      deps = %{api: api_bootstrap_stub(self()), output: output_stub(), config_path: config_path}
+
+      assert {:ok, _} = Init.run(["testorg/test-registry"], [force: true], deps)
+
+      config = Jason.decode!(File.read!(config_path))
+      assert config["registry_repo"] == "testorg/test-registry"
+      assert Enum.any?(collect_output(:warn), &(&1 =~ "解析できません"))
     end
 
     test "merges keys into the existing config with --force, preserving others" do
