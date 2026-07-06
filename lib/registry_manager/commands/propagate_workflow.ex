@@ -168,14 +168,10 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     with {:ok, branches} <- get_draft_branches(repo_name, test_params),
          {:ok, sorted_branches} <- sort_draft_branches(branches),
          {:ok, issues} <- check_branch_hierarchy(repo_name, sorted_branches, test_params) do
-      if Enum.empty?(issues) do
-        {:ok, :no_action_needed}
-      else
-        if opts[:dry_run] do
-          {:ok, {:dry_run, issues}}
-        else
-          propagate_changes(repo_name, issues, opts, test_params)
-        end
+      cond do
+        Enum.empty?(issues) -> {:ok, :no_action_needed}
+        opts[:dry_run] -> {:ok, {:dry_run, issues}}
+        true -> propagate_changes(repo_name, issues, opts, test_params)
       end
     end
   end

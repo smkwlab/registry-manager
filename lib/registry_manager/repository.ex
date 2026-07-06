@@ -6,8 +6,8 @@ defmodule RegistryManager.Repository do
   データ永続化は DataStore モジュールに委譲し、外部依存を完全に分離します。
   """
 
-  alias RegistryManager.Repository.{DataStore, Display, ErrorHandler}
   alias RegistryManager.{Config, Validation}
+  alias RegistryManager.Repository.{DataStore, Display, ErrorHandler}
 
   @doc """
   新しいリポジトリエントリを構築（ビジネスロジック）

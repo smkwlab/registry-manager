@@ -489,24 +489,22 @@ defmodule RegistryManager.Commands.Validate do
 
       """
 
-      status =
-        case result do
-          :valid ->
-            "✅ Entry is valid"
-
-          {:invalid, errors} ->
-            error_lines = Enum.map(errors, fn e -> "  - #{e}" end) |> Enum.join("\n")
-            "❌ Entry is invalid:\n#{error_lines}"
-
-          {:legacy, warnings} ->
-            warning_lines = Enum.map(warnings, fn w -> "  - #{w}" end) |> Enum.join("\n")
-            "⚠️  Entry uses legacy format:\n#{warning_lines}"
-        end
-
-      {:ok, header <> status}
+      {:ok, header <> format_validation_status(result)}
     else
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp format_validation_status(:valid), do: "✅ Entry is valid"
+
+  defp format_validation_status({:invalid, errors}) do
+    error_lines = Enum.map_join(errors, "\n", fn e -> "  - #{e}" end)
+    "❌ Entry is invalid:\n#{error_lines}"
+  end
+
+  defp format_validation_status({:legacy, warnings}) do
+    warning_lines = Enum.map_join(warnings, "\n", fn w -> "  - #{w}" end)
+    "⚠️  Entry uses legacy format:\n#{warning_lines}"
   end
 
   defp format_json_output(validation_results, _opts) do
