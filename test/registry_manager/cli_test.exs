@@ -270,4 +270,107 @@ defmodule RegistryManager.CLITest do
       assert_output_contains("❌ エラー:")
     end
   end
+
+  # GitHubAPIMock が固定レジストリ（k21rs001-sotsuron 等）を返し更新系は成功する
+  # ため、成功パスの process_impl 節を網羅できる
+  describe "process/1 command dispatch (success paths)" do
+    alias RegistryManager.Test.GitHubAPIMock
+
+    setup do
+      Application.put_env(:registry_manager, :test_mode, true)
+      Application.put_env(:registry_manager, :test_output, "")
+      GitHubAPIMock.reset_mock_responses()
+
+      on_exit(fn ->
+        Application.delete_env(:registry_manager, :test_mode)
+        Application.delete_env(:registry_manager, :test_output)
+        GitHubAPIMock.reset_mock_responses()
+      end)
+
+      :ok
+    end
+
+    test "add_explicit success prints confirmation and exits 0" do
+      result = run_cli_process({:add_explicit, {"k21rs001-sotsuron", "k21rs001", "sotsuron"}, []})
+      assert_success_exit(result)
+      assert_output_contains("✅")
+    end
+
+    test "add_explicit with verbose logs the operation" do
+      result =
+        run_cli_process(
+          {:add_explicit, {"k21rs001-sotsuron", "k21rs001", "sotsuron"}, [verbose: true]}
+        )
+
+      assert_success_exit(result)
+      assert_output_contains("明示的指定")
+    end
+
+    test "add_auto success resolves via inference" do
+      # 明示的にモック応答を設定し、他モジュールのモック変更に影響されないようにする
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+        {:ok, %{"owner" => %{"login" => "taro-yamada"}, "created_at" => "2025-01-01T00:00:00Z"}}
+      end)
+
+      result = run_cli_process({:add_auto, "k21rs001-sotsuron", [verbose: true]})
+      assert_success_exit(result)
+      assert_output_contains("✅")
+    end
+
+    test "update success prints confirmation" do
+      result =
+        run_cli_process(
+          {:update, {"k21rs001-sotsuron", "protection_status", "protected"}, [verbose: true]}
+        )
+
+      assert_success_exit(result)
+      assert_output_contains("✅")
+    end
+
+    test "remove success" do
+      result = run_cli_process({:remove, "k21rs003-wr", []})
+      assert_success_exit(result)
+      assert_output_contains("✅")
+    end
+
+    test "protect success" do
+      result = run_cli_process({:protect, "k21rs002-wr", [verbose: true]})
+      assert_success_exit(result)
+      assert_output_contains("✅")
+    end
+
+    test "migrate status succeeds" do
+      result = run_cli_process({:migrate, ["status"], [verbose: true]})
+      assert_success_exit(result)
+    end
+
+    test "migrate with invalid subcommand errors" do
+      result = run_cli_process({:migrate, ["totally-invalid"], []})
+      assert_error_exit(result)
+      assert_output_contains("❌")
+    end
+
+    test "cache status succeeds" do
+      result = run_cli_process({:cache, ["status"], [verbose: true]})
+      assert_success_exit(result)
+    end
+
+    test "edit success adds an owner" do
+      result = run_cli_process({:edit, "k21rs001-sotsuron", [add_owner: "extra-owner"]})
+      assert_success_exit(result)
+      assert_output_contains("Successfully added")
+    end
+
+    test "edit without an action errors" do
+      result = run_cli_process({:edit, "k21rs001-sotsuron", [verbose: true]})
+      assert_error_exit(result)
+      assert_output_contains("❌")
+    end
+
+    test "infer_student_id errors when repository already has a student_id" do
+      result = run_cli_process({:infer_student_id, "k21rs001-sotsuron", [verbose: true]})
+      assert_error_exit(result)
+      assert_output_contains("❌")
+    end
+  end
 end

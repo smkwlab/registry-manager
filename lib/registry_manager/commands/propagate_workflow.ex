@@ -294,7 +294,9 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     end
   end
 
-  defp decode_file_content(response, path) do
+  # @doc false: テスト用に公開（純粋な Base64 デコード処理）。挙動は変更していない。
+  @doc false
+  def decode_file_content(response, path) do
     content = Map.get(response, "content", "")
 
     case Base.decode64(String.replace(content, "\n", "")) do
@@ -443,7 +445,10 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     end
   end
 
-  defp propagate_through_all_branches(work_dir, opts) do
+  # @doc false: テスト用に公開（ローカル git リポジトリでマージ連鎖を検証するため）。
+  # 挙動は変更していない。
+  @doc false
+  def propagate_through_all_branches(work_dir, opts) do
     verbose = opts[:verbose]
 
     # Fetch all remote branches
@@ -477,7 +482,9 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     end
   end
 
-  defp parse_draft_branches(output) do
+  # @doc false: テスト用に公開（純粋な文字列処理）。挙動は変更していない。
+  @doc false
+  def parse_draft_branches(output) do
     draft_branches =
       output
       |> String.split("\n")
@@ -682,7 +689,9 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     end
   end
 
-  defp run_git_command(args, cwd \\ nil) do
+  # @doc false: テスト用に公開（git コマンドの薄いラッパ）。挙動は変更していない。
+  @doc false
+  def run_git_command(args, cwd \\ nil) do
     opts =
       if cwd do
         [cd: cwd, stderr_to_stdout: true]

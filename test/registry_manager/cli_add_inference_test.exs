@@ -41,9 +41,9 @@ defmodule RegistryManager.CLIAddInferenceTest do
       on_exit(fn ->
         Application.delete_env(:registry_manager, :test_mode)
         Application.delete_env(:registry_manager, :test_output)
-        Application.delete_env(:registry_manager, :env)
+        Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
-        GitHubAPIMock.cleanup_mock()
+        GitHubAPIMock.reset_mock_responses()
       end)
 
       :ok

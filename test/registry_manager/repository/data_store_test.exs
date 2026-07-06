@@ -41,7 +41,7 @@ defmodule RegistryManager.Repository.DataStoreTest do
     GitHubAPIMock.clear_mock_responses()
 
     on_exit(fn ->
-      GitHubAPIMock.cleanup_mock()
+      GitHubAPIMock.reset_mock_responses()
     end)
 
     :ok

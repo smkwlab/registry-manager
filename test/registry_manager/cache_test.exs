@@ -386,4 +386,32 @@ defmodule RegistryManager.CacheTest do
       refute pr_status.expired
     end
   end
+
+  describe "Cache.CacheStatus struct" do
+    test "builds a struct dynamically with the expected fields" do
+      # struct/2 を使うことで CacheStatus.__struct__ を実行時に呼び出し、
+      # コンパイル時展開されるリテラル構文では到達しないコードを網羅する
+      status =
+        struct(Cache.CacheStatus, %{
+          repository: "k21rs001-sotsuron",
+          exists: true,
+          expired: false,
+          cached_at: "2025-01-01T00:00:00Z",
+          expires_at: "2025-01-01T01:00:00Z",
+          size_bytes: 42
+        })
+
+      assert %Cache.CacheStatus{} = status
+      assert status.repository == "k21rs001-sotsuron"
+      assert status.exists
+      refute status.expired
+      assert status.size_bytes == 42
+    end
+
+    test "defaults all fields to nil when built empty" do
+      status = struct(Cache.CacheStatus, %{})
+      assert status.repository == nil
+      assert status.size_bytes == nil
+    end
+  end
 end

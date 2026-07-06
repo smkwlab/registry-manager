@@ -13,9 +13,9 @@ defmodule RegistryManager.RepositoryInferenceTest do
       GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
-        Application.delete_env(:registry_manager, :env)
+        Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
-        GitHubAPIMock.cleanup_mock()
+        GitHubAPIMock.reset_mock_responses()
       end)
     end
 
@@ -231,7 +231,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
   describe "get_student_id_from_csv_by_github/1" do
     setup do
       Application.put_env(:registry_manager, :env, :test)
-      on_exit(fn -> Application.delete_env(:registry_manager, :env) end)
+      on_exit(fn -> Application.put_env(:registry_manager, :env, :test) end)
     end
 
     test "finds student ID for known GitHub username" do
@@ -266,9 +266,9 @@ defmodule RegistryManager.RepositoryInferenceTest do
       GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
-        Application.delete_env(:registry_manager, :env)
+        Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
-        GitHubAPIMock.cleanup_mock()
+        GitHubAPIMock.reset_mock_responses()
       end)
     end
 
