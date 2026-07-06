@@ -73,48 +73,6 @@ defmodule RegistryManager.ConfigTest do
       assert config.registry_repo == "org/registry-data"
     end
 
-    test "legacy REGISTRY_MANAGER_DATA_REPO is migrated with a warning" do
-      System.put_env("REGISTRY_MANAGER_DATA_REPO", "org/legacy-data")
-
-      {config, stderr} =
-        with_io(:stderr, fn ->
-          Config.load_config("/nonexistent/config.json")
-        end)
-
-      assert config.registry_repo == "org/legacy-data"
-      assert stderr =~ "deprecated"
-      assert stderr =~ "registry_repo"
-    end
-
-    test "legacy data_repo JSON key is migrated with a warning", %{config_file: config_file} do
-      File.write!(config_file, Jason.encode!(%{"data_repo" => "org/legacy-json"}))
-
-      {config, stderr} =
-        with_io(:stderr, fn ->
-          Config.load_config(config_file)
-        end)
-
-      assert config.registry_repo == "org/legacy-json"
-      assert stderr =~ "deprecated"
-      assert stderr =~ "registry_repo"
-    end
-
-    test "registry_repo wins over legacy data_repo with an ignored warning",
-         %{config_file: config_file} do
-      File.write!(
-        config_file,
-        Jason.encode!(%{"registry_repo" => "org/new", "data_repo" => "org/old"})
-      )
-
-      {config, stderr} =
-        with_io(:stderr, fn ->
-          Config.load_config(config_file)
-        end)
-
-      assert config.registry_repo == "org/new"
-      assert stderr =~ "ignored"
-    end
-
     test "validates registry_repo format" do
       config = %{Config.default_config() | registry_repo: "org/repo"}
       assert {:ok, _} = Config.validate_config(config)
@@ -130,7 +88,6 @@ defmodule RegistryManager.ConfigTest do
     test "loads configuration from environment variables" do
       System.put_env("REGISTRY_MANAGER_CSV_PATH", "/custom/path.csv")
       System.put_env("REGISTRY_MANAGER_GITHUB_ORG", "custom_org")
-      System.put_env("REGISTRY_MANAGER_DATA_REPO", "custom_org/data-repo")
       System.put_env("REGISTRY_MANAGER_TEST_STUDENT_IDS", "k99rs001, k99rs002")
       System.put_env("REGISTRY_MANAGER_CACHE_ENABLED", "false")
       System.put_env("REGISTRY_MANAGER_CACHE_TTL_HOURS", "2")
@@ -141,7 +98,6 @@ defmodule RegistryManager.ConfigTest do
 
       assert config.csv_path == "/custom/path.csv"
       assert config.github_org == "custom_org"
-      assert config.data_repo == "custom_org/data-repo"
       assert config.test_student_ids == ["k99rs001", "k99rs002"]
       assert config.cache.enabled == false
       assert config.cache.ttl_hours == 2
@@ -174,7 +130,7 @@ defmodule RegistryManager.ConfigTest do
       user_config = %{
         "csv_path" => "/user/path.csv",
         "github_org" => "user_org",
-        "data_repo" => "user_org/student-registry",
+        "registry_repo" => "user_org/student-registry",
         "test_student_ids" => ["k99rs001"],
         "cache" => %{
           "enabled" => false,
@@ -193,7 +149,7 @@ defmodule RegistryManager.ConfigTest do
       # load_user_config は raw map を返すようになった
       assert config["csv_path"] == "/user/path.csv"
       assert config["github_org"] == "user_org"
-      assert config["data_repo"] == "user_org/student-registry"
+      assert config["registry_repo"] == "user_org/student-registry"
       assert config["test_student_ids"] == ["k99rs001"]
       assert config["cache"]["enabled"] == false
       assert config["cache"]["ttl_hours"] == 3
