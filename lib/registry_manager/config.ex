@@ -198,9 +198,8 @@ defmodule RegistryManager.Config do
   Loads configuration with proper priority:
   User config > Environment variables > Default values
   """
-  @spec load_config(String.t() | nil) :: t()
-  def load_config(config_file_path \\ nil) do
-    config_file_path = config_file_path || resolve_default_config_path()
+  @spec load_config(String.t()) :: t()
+  def load_config(config_file_path \\ get_default_config_path()) do
     default_config = default_config()
 
     env_config =
@@ -286,48 +285,13 @@ defmodule RegistryManager.Config do
 
   @doc """
   Returns the default config file path (annotated YAML, issue #18).
+
+  旧 config.json は読み込まない（公開前に fallback を持たない決定）。
+  移行は `mv config.json config.yml`（YAML 1.2 ⊃ JSON なのでそのまま有効）。
   """
   @spec get_default_config_path() :: String.t()
   def get_default_config_path do
-    Path.join(default_config_dir(), "config.yml")
-  end
-
-  @doc """
-  Returns the legacy JSON config path (one-generation fallback).
-  """
-  @spec get_legacy_config_path() :: String.t()
-  def get_legacy_config_path do
-    Path.join(default_config_dir(), "config.json")
-  end
-
-  # 探索順: config.yml → 旧 config.json（警告付き 1 世代 fallback）→ config.yml
-  # config_dir はテストのために注入可能
-  @doc false
-  @spec resolve_default_config_path(String.t()) :: String.t()
-  def resolve_default_config_path(config_dir \\ default_config_dir()) do
-    yml = Path.join(config_dir, "config.yml")
-    json = Path.join(config_dir, "config.json")
-
-    cond do
-      File.exists?(yml) ->
-        yml
-
-      File.exists?(json) ->
-        IO.puts(
-          :stderr,
-          "warning: config file \"config.json\" is deprecated, " <>
-            "rename it to \"config.yml\" (#{json})"
-        )
-
-        json
-
-      true ->
-        yml
-    end
-  end
-
-  defp default_config_dir do
-    Path.join([System.user_home!(), ".config", "registry-manager"])
+    Path.join([System.user_home!(), ".config", "registry-manager", "config.yml"])
   end
 
   @doc """

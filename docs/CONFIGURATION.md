@@ -15,9 +15,12 @@ registry-manager の設定方法を説明します。設定項目の正本は
 設定ファイルを、シェル環境に残った一時的な環境変数より優先する意図的な設計です。
 
 設定ファイルは**注釈付き YAML** です（issue #18）。旧形式の
-`~/.config/registry-manager/config.json` も 1 世代の間は警告付きで読み込まれます
-（YAML 1.2 は JSON の上位互換のため、パーサは共通です）。`registry-manager init`
-に `--force` を付けると旧 JSON の内容を引き継いで config.yml へ移行できます。
+`~/.config/registry-manager/config.json` は読み込みません。YAML 1.2 は JSON の
+上位互換なので、旧ファイルはリネームするだけでそのまま有効です:
+
+```bash
+mv ~/.config/registry-manager/config.json ~/.config/registry-manager/config.yml
+```
 
 ### 設定の確認方法
 
@@ -117,13 +120,11 @@ head -5 "$csv"
 
 `registry_repo` は書き込み先のため明示必須です。`registry-manager init` を実行
 するか、config.yml に `registry_repo: <owner>/<repo>` を追記してください。
-
-### 旧 config.json の警告が出る
+旧 `config.json` が残っているマシンでは、それは読み込まれないため
+リネームで移行してください:
 
 ```bash
-# init --force で内容を引き継いで config.yml へ移行し、旧ファイルを削除する
-registry-manager init <owner>/<repo> --force
-rm ~/.config/registry-manager/config.json
+mv ~/.config/registry-manager/config.json ~/.config/registry-manager/config.yml
 ```
 
 ## 参考情報

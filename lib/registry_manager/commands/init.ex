@@ -183,75 +183,28 @@ defmodule RegistryManager.Commands.Init do
     [owner, _name] = String.split(repo, "/")
     org = opts[:org] || owner
     proposed = %{"github_org" => org, "registry_repo" => repo}
-    force = opts[:force] || false
-
-    config_path
-    |> config_state(force)
-    |> do_ensure_config(proposed, config_path, output)
-  end
-
-  defp config_state(config_path, force) do
-    config_path
-    |> existing_config_source()
-    |> to_config_action(force, config_path)
-  end
-
-  # 既存の設定ファイル（新パス優先、無ければ旧 config.json）。どちらも無ければ nil
-  defp existing_config_source(config_path) do
-    legacy_path = legacy_sibling(config_path)
 
     cond do
-      File.exists?(config_path) -> config_path
-      legacy_path != nil and File.exists?(legacy_path) -> legacy_path
-      true -> nil
+      not File.exists?(config_path) ->
+        write_config(config_path, proposed, output)
+
+      opts[:force] ->
+        merged = Map.merge(read_existing_config(config_path, output), proposed)
+        write_config(config_path, merged, output)
+
+      true ->
+        call(
+          output,
+          :warn,
+          "config は既に存在します: #{config_path}（--force で上書き）\n" <>
+            "  適用されなかった値: #{Jason.encode!(proposed)}"
+        )
+
+        :ok
     end
   end
 
-  defp to_config_action(nil, _force, _config_path), do: :fresh
-  defp to_config_action(source, true, _config_path), do: {:force_write, source}
-  defp to_config_action(source, false, config_path) when source == config_path, do: :exists
-  defp to_config_action(legacy_path, false, _config_path), do: {:migrate_hint, legacy_path}
-
-  defp do_ensure_config(:fresh, proposed, config_path, output) do
-    write_config(config_path, proposed, output)
-  end
-
-  defp do_ensure_config({:migrate_hint, legacy_path}, _proposed, config_path, output) do
-    call(
-      output,
-      :warn,
-      "旧形式の config が存在します: #{legacy_path}\n" <>
-        "  --force で #{config_path}（注釈付き YAML）へ内容を引き継いで移行します"
-    )
-
-    :ok
-  end
-
-  defp do_ensure_config({:force_write, source}, proposed, config_path, output) do
-    merged = Map.merge(read_existing_config(source, output), proposed)
-    write_config(config_path, merged, output)
-  end
-
-  defp do_ensure_config(:exists, proposed, config_path, output) do
-    call(
-      output,
-      :warn,
-      "config は既に存在します: #{config_path}（--force で上書き）\n" <>
-        "  適用されなかった値: #{Jason.encode!(proposed)}"
-    )
-
-    :ok
-  end
-
-  # 新パスが config.yml のとき、同ディレクトリの旧 config.json を移行元とみなす
-  defp legacy_sibling(config_path) do
-    if Path.basename(config_path) == "config.yml" do
-      Path.join(Path.dirname(config_path), "config.json")
-    end
-  end
-
-  # --force 時のマージ元。YAML パーサは旧 JSON も読める（YAML 1.2 ⊃ JSON）。
-  # 壊れたファイルは警告して空扱い（proposed のみで書き直す）
+  # --force 時のマージ元。壊れたファイルは警告して空扱い（proposed のみで書き直す）
   defp read_existing_config(config_path, output) do
     case YamlElixir.read_from_file(config_path) do
       {:ok, config} when is_map(config) ->

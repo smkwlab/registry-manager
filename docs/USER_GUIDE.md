@@ -58,7 +58,7 @@ ls -la registry-manager
 #### 1. 基本設定（~/.config/registry-manager/config.yml）
 
 `registry-manager init` が生成します（注釈付き YAML。旧 config.json は
-1 世代の間、警告付きで読み込まれます）:
+読み込まれないため `mv config.json config.yml` でリネームして移行）:
 
 ```yaml
 github_org: smkwlab

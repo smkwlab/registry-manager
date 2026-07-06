@@ -315,43 +315,6 @@ defmodule RegistryManager.ConfigTest do
       assert String.ends_with?(Config.get_default_config_path(), "registry-manager/config.yml")
     end
 
-    test "legacy config path is config.json" do
-      assert String.ends_with?(Config.get_legacy_config_path(), "registry-manager/config.json")
-    end
-
-    test "resolve_default_config_path prefers config.yml" do
-      dir = Path.join(System.tmp_dir!(), "rm-fmt-#{System.unique_integer([:positive])}")
-      File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf!(dir) end)
-      File.write!(Path.join(dir, "config.yml"), "github_org: yml_org\n")
-      File.write!(Path.join(dir, "config.json"), ~s({"github_org": "json_org"}))
-
-      assert Config.resolve_default_config_path(dir) == Path.join(dir, "config.yml")
-    end
-
-    test "falls back to legacy config.json with a deprecation warning" do
-      dir = Path.join(System.tmp_dir!(), "rm-fmt-#{System.unique_integer([:positive])}")
-      File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf!(dir) end)
-      File.write!(Path.join(dir, "config.json"), ~s({"github_org": "json_org"}))
-
-      stderr =
-        ExUnit.CaptureIO.capture_io(:stderr, fn ->
-          assert Config.resolve_default_config_path(dir) == Path.join(dir, "config.json")
-        end)
-
-      assert stderr =~ "deprecated"
-      assert stderr =~ "config.yml"
-    end
-
-    test "resolves to config.yml when neither file exists" do
-      dir = Path.join(System.tmp_dir!(), "rm-fmt-#{System.unique_integer([:positive])}")
-      File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf!(dir) end)
-
-      assert Config.resolve_default_config_path(dir) == Path.join(dir, "config.yml")
-    end
-
     test "load_user_config parses annotated YAML" do
       path = Path.join(System.tmp_dir!(), "rm-yaml-#{System.unique_integer([:positive])}.yml")
 

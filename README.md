@@ -59,7 +59,8 @@ registry-manager init your-org/your-student-registry --force
 ### 2. 設定ファイルの作成
 
 `~/.config/registry-manager/config.yml`（注釈付き YAML。旧 `config.json` は
-1 世代の間、警告付きで読み込まれます。`init --force` で内容を引き継いで移行可能）:
+読み込まれないため、`mv config.json config.yml` でリネームして移行する —
+YAML 1.2 ⊃ JSON なので中身はそのまま有効）:
 
 ```yaml
 github_org: your-org
