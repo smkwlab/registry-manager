@@ -68,8 +68,8 @@ config :registry_manager,
   # キャッシュ設定
   cache_ttl: 300,  # 5分
   
-  # 学生データCSVファイル
-  csv_file_path: "smkwlab.csv"
+  # 名簿 CSV（任意。氏名解決用。未設定なら氏名解決なし）
+  csv_path: "/path/to/students.csv"
 ```
 
 #### 2. 環境変数の設定
@@ -441,14 +441,14 @@ echo $GITHUB_TOKEN
 
 **解決策:**
 ```bash
-# CSVファイルの存在確認
-ls -la smkwlab.csv
+# CSVファイルの存在確認（パスは csv_path / REGISTRY_MANAGER_CSV_PATH の設定値）
+ls -la "$REGISTRY_MANAGER_CSV_PATH"
 
 # CSVファイルの形式確認（UTF-8, カンマ区切り）
-head -5 smkwlab.csv
+head -5 "$REGISTRY_MANAGER_CSV_PATH"
 
-# 設定確認
-grep csv_file_path config/config.exs
+# 設定確認（config は JSON）
+grep csv_path ~/.config/registry-manager/config.json
 ```
 
 #### 4. パフォーマンス問題

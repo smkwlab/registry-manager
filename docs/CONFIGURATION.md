@@ -47,8 +47,8 @@ config :registry_manager,
   cache_ttl: 300,  # 秒単位（5分）
   cache_dir: System.tmp_dir() |> Path.join("registry_manager_cache"),
   
-  # データファイル設定
-  csv_file_path: "smkwlab.csv",
+  # 名簿 CSV（任意。氏名解決用。未設定なら氏名解決なしで動作）
+  csv_path: "/path/to/students.csv",
   backup_enabled: true,
   backup_count: 5,
   
@@ -90,7 +90,7 @@ config :registry_manager,
 
 | 項目 | デフォルト値 | 説明 |
 |------|-------------|------|
-| `csv_file_path` | `"smkwlab.csv"` | 学生データCSVファイル |
+| `csv_path` | `nil` | 任意。氏名解決用のローカル名簿 CSV への任意パス（環境変数 `REGISTRY_MANAGER_CSV_PATH` でも指定可）。未設定なら氏名解決なしで動作 |
 | `backup_enabled` | `true` | 自動バックアップの有効化 |
 | `backup_count` | `5` | 保持するバックアップ数 |
 
