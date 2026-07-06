@@ -447,9 +447,10 @@ echo $GITHUB_TOKEN
 cat ~/.config/registry-manager/config.json
 echo "REGISTRY_MANAGER_CSV_PATH=$REGISTRY_MANAGER_CSV_PATH"
 
-# 2. 上で確認したパスの CSV を検査する（<csv> を実際のパスに置き換える）
-ls -la <csv>      # 存在確認
-head -5 <csv>     # 形式確認（UTF-8, カンマ区切り）
+# 2. 確認したパスを代入して検査する
+csv=/path/to/students.csv    # ← 上で確認した実際のパスに置き換える
+ls -la "$csv"     # 存在確認
+head -5 "$csv"    # 形式確認（UTF-8, カンマ区切り）
 ```
 
 #### 4. パフォーマンス問題
