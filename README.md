@@ -73,7 +73,7 @@ registry-manager init your-org/your-student-registry --force
 |---|---|---|
 | `github_org` | 推奨 | 学生リポジトリが属する GitHub Organization |
 | `registry_repo` | GitHub データ操作時に必須 | `owner/repo` 形式のレジストリデータリポジトリ（旧キー `data_repo` も当面は警告付きで受理） |
-| `csv_path` | 任意 | 学生名簿 CSV（氏名解決用）。未設定なら氏名解決なしで動作 |
+| `csv_path` | 任意 | 学生名簿 CSV（氏名解決用）。未設定時は規約パス `~/.config/<github_org>/students.csv` が存在すればそれを使い、無ければ氏名解決なしで動作 |
 | `test_student_ids` | 任意 | 本番データ保護チェックでテストデータ扱いする学生 ID |
 
 環境変数でも設定できます:
@@ -152,7 +152,8 @@ mix dialyzer       # 型チェック
   リポジトリ（thesis-student-registry）で管理。必ず **private** にする。
 - **名簿 CSV（氏名を含む）**: 一段機密が高いため、**ローカル限定**で管理し、
   ツール本体リポジトリにもレジストリにも一切コミットしない。ツールは
-  `csv_path` / `REGISTRY_MANAGER_CSV_PATH` で指定した任意のローカルパスから
+  `csv_path` / `REGISTRY_MANAGER_CSV_PATH` で指定した任意のローカルパス
+  （未設定時は規約パス `~/.config/<github_org>/students.csv`、存在時のみ）から
   読むのみ（任意設定）。本リポジトリでも `.gitignore` で `*.csv` を除外し、
   誤コミットを防いでいる（テストフィクスチャ `test/fixtures/*.csv` は除外対象外）。
 

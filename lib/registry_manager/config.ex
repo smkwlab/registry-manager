@@ -213,6 +213,45 @@ defmodule RegistryManager.Config do
       |> migrate_legacy_registry_key(config_file_path)
 
     merge_configs([default_config, env_config, user_config])
+    |> apply_csv_convention()
+  end
+
+  # csv_path 未設定（nil / 空文字列）のとき、規約パス
+  # ~/.config/<github_org>/students.csv が存在すればそれを使う（issue #16）。
+  # 明示設定（config.json / REGISTRY_MANAGER_CSV_PATH）が常に優先。
+  # 名簿 CSV はローカル管理方針のためリポジトリ・レジストリには置かない。
+  # load_config の内部実装だが、home を注入したテストのために public にしている。
+  @doc false
+  @spec apply_csv_convention(t(), String.t() | nil) :: t()
+  def apply_csv_convention(config, home \\ System.user_home())
+
+  def apply_csv_convention(%__MODULE__{csv_path: csv} = config, home) when csv in [nil, ""] do
+    conventional = safe_conventional_csv_path(config.github_org, home)
+
+    if conventional && File.exists?(conventional) do
+      %{config | csv_path: conventional}
+    else
+      %{config | csv_path: nil}
+    end
+  end
+
+  def apply_csv_convention(config, _home), do: config
+
+  # github_org / home が使えない環境（未設定・HOME なし）では規約導出をスキップ
+  defp safe_conventional_csv_path(github_org, home)
+       when is_binary(github_org) and github_org != "" and is_binary(home) do
+    conventional_csv_path(github_org, home)
+  end
+
+  defp safe_conventional_csv_path(_github_org, _home), do: nil
+
+  @doc """
+  Returns the conventional roster CSV path for an organization.
+  """
+  @spec conventional_csv_path(String.t(), String.t()) :: String.t()
+  def conventional_csv_path(github_org, home \\ System.user_home!())
+      when is_binary(github_org) and is_binary(home) do
+    Path.join([home, ".config", github_org, "students.csv"])
   end
 
   # 旧キー data_repo を registry_repo へ移行（1 世代の後方互換、issue #8）

@@ -68,7 +68,7 @@ config :registry_manager,
   # キャッシュ設定
   cache_ttl: 300,  # 5分
   
-  # 名簿 CSV（任意。氏名解決用。未設定なら氏名解決なし）
+  # 名簿 CSV（任意。氏名解決用。未設定時は ~/.config/<github_org>/students.csv を規約として参照）
   csv_path: "/path/to/students.csv"
 ```
 
@@ -443,7 +443,8 @@ echo $GITHUB_TOKEN
 ```bash
 # 1. 名簿 CSV のパスを確認する
 #    （config.json の csv_path、または環境変数 REGISTRY_MANAGER_CSV_PATH。
-#     どちらも未設定なら氏名解決は無効 = 名前が Unknown になる原因）
+#     どちらも未設定なら規約パス ~/.config/<github_org>/students.csv を参照し、
+#     それも無ければ氏名解決は無効 = 名前が Unknown になる原因）
 cat ~/.config/registry-manager/config.json
 echo "REGISTRY_MANAGER_CSV_PATH=$REGISTRY_MANAGER_CSV_PATH"
 
