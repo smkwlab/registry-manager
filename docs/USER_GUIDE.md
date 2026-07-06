@@ -441,15 +441,15 @@ echo $GITHUB_TOKEN
 
 **解決策:**
 ```bash
-# 名簿 CSV のパスを解決（環境変数優先、なければ config.json の csv_path）
-CSV_PATH="${REGISTRY_MANAGER_CSV_PATH:-$(jq -r '.csv_path // empty' ~/.config/registry-manager/config.json 2>/dev/null)}"
+# 1. 名簿 CSV のパスを確認する
+#    （config.json の csv_path、または環境変数 REGISTRY_MANAGER_CSV_PATH。
+#     どちらも未設定なら氏名解決は無効 = 名前が Unknown になる原因）
+cat ~/.config/registry-manager/config.json
+echo "REGISTRY_MANAGER_CSV_PATH=$REGISTRY_MANAGER_CSV_PATH"
 
-if [ -z "$CSV_PATH" ]; then
-  echo "csv_path が未設定です（氏名解決は無効。config.json か REGISTRY_MANAGER_CSV_PATH で設定してください）"
-else
-  ls -la "$CSV_PATH"    # 存在確認
-  head -5 "$CSV_PATH"   # 形式確認（UTF-8, カンマ区切り）
-fi
+# 2. 上で確認したパスの CSV を検査する（<csv> を実際のパスに置き換える）
+ls -la <csv>      # 存在確認
+head -5 <csv>     # 形式確認（UTF-8, カンマ区切り）
 ```
 
 #### 4. パフォーマンス問題
