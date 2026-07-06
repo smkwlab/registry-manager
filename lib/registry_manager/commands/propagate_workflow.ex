@@ -35,9 +35,9 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   See: latex-ecosystem/CLAUDE.md "Updating Workflow Files in Student Repositories"
   """
 
+  alias RegistryManager.Config
   alias RegistryManager.GitHubAPI
   alias RegistryManager.GitHubAPI.Client
-  alias RegistryManager.Config
 
   require Logger
 
@@ -168,14 +168,10 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     with {:ok, branches} <- get_draft_branches(repo_name, test_params),
          {:ok, sorted_branches} <- sort_draft_branches(branches),
          {:ok, issues} <- check_branch_hierarchy(repo_name, sorted_branches, test_params) do
-      if Enum.empty?(issues) do
-        {:ok, :no_action_needed}
-      else
-        if opts[:dry_run] do
-          {:ok, {:dry_run, issues}}
-        else
-          propagate_changes(repo_name, issues, opts, test_params)
-        end
+      cond do
+        Enum.empty?(issues) -> {:ok, :no_action_needed}
+        opts[:dry_run] -> {:ok, {:dry_run, issues}}
+        true -> propagate_changes(repo_name, issues, opts, test_params)
       end
     end
   end
@@ -229,73 +225,81 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   defp check_template_updates_from_api(repo_name) do
     template_repo = get_template_repo(repo_name)
 
-    if template_repo == nil do
-      {:ok, []}
-    else
+    if template_repo do
       config = Config.load_config()
 
       result =
-        Enum.reduce_while(get_workflow_files(), {:ok, []}, fn file, {:ok, acc} ->
-          case {get_file_content(config.github_org, template_repo, file, "main"),
-                get_file_content(config.github_org, repo_name, file, "main")} do
-            # Both files exist and are different - needs update
-            {{:ok, template_content}, {:ok, current_content}}
-            when template_content != current_content ->
-              {:cont, {:ok, [file | acc]}}
-
-            # Both files exist and are the same - no update needed
-            {{:ok, _template_content}, {:ok, _current_content}} ->
-              {:cont, {:ok, acc}}
-
-            # Template exists but target file is missing (404) - needs update
-            {{:ok, _template_content}, {:error, :not_found}} ->
-              {:cont, {:ok, [file | acc]}}
-
-            # Template doesn't exist - skip this file
-            {{:error, :not_found}, _} ->
-              {:cont, {:ok, acc}}
-
-            # Other errors (network, auth, etc.) - propagate error
-            {{:error, reason}, _} ->
-              {:halt, {:error, "Failed to get template file #{file}: #{reason}"}}
-
-            {_, {:error, reason}} ->
-              {:halt, {:error, "Failed to get target file #{file}: #{reason}"}}
-          end
+        Enum.reduce_while(get_workflow_files(), {:ok, []}, fn file, acc ->
+          check_single_workflow_file(config, template_repo, repo_name, file, acc)
         end)
 
       case result do
         {:ok, updates} -> {:ok, Enum.reverse(updates)}
         {:error, _} = error -> error
       end
+    else
+      {:ok, []}
+    end
+  end
+
+  defp check_single_workflow_file(config, template_repo, repo_name, file, {:ok, acc}) do
+    case {get_file_content(config.github_org, template_repo, file, "main"),
+          get_file_content(config.github_org, repo_name, file, "main")} do
+      # Both files exist and are different - needs update
+      {{:ok, template_content}, {:ok, current_content}}
+      when template_content != current_content ->
+        {:cont, {:ok, [file | acc]}}
+
+      # Both files exist and are the same - no update needed
+      {{:ok, _template_content}, {:ok, _current_content}} ->
+        {:cont, {:ok, acc}}
+
+      # Template exists but target file is missing (404) - needs update
+      {{:ok, _template_content}, {:error, :not_found}} ->
+        {:cont, {:ok, [file | acc]}}
+
+      # Template doesn't exist - skip this file
+      {{:error, :not_found}, _} ->
+        {:cont, {:ok, acc}}
+
+      # Other errors (network, auth, etc.) - propagate error
+      {{:error, reason}, _} ->
+        {:halt, {:error, "Failed to get template file #{file}: #{reason}"}}
+
+      {_, {:error, reason}} ->
+        {:halt, {:error, "Failed to get target file #{file}: #{reason}"}}
     end
   end
 
   defp get_file_content(org, repo, path, ref) do
     url = "https://api.github.com/repos/#{org}/#{repo}/contents/#{path}?ref=#{ref}"
 
-    with {:ok, token} <- Client.get_github_token() do
-      case Client.send_request(:get, url, token: token) do
-        {:ok, response} ->
-          content = Map.get(response, "content", "")
-
-          case Base.decode64(String.replace(content, "\n", "")) do
-            {:ok, decoded} -> {:ok, decoded}
-            :error -> {:error, "Invalid Base64 content in #{path}"}
-          end
-
-        {:error, message} when is_binary(message) ->
-          if String.contains?(message, "(404)") do
-            {:error, :not_found}
-          else
-            {:error, message}
-          end
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
+    case Client.get_github_token() do
+      {:ok, token} -> request_file_content(url, path, token)
       {:error, reason} -> {:error, "GitHub auth failed: #{reason}"}
+    end
+  end
+
+  defp request_file_content(url, path, token) do
+    case Client.send_request(:get, url, token: token) do
+      {:ok, response} ->
+        decode_file_content(response, path)
+
+      {:error, message} when is_binary(message) ->
+        if String.contains?(message, "(404)") do
+          {:error, :not_found}
+        else
+          {:error, message}
+        end
+    end
+  end
+
+  defp decode_file_content(response, path) do
+    content = Map.get(response, "content", "")
+
+    case Base.decode64(String.replace(content, "\n", "")) do
+      {:ok, decoded} -> {:ok, decoded}
+      :error -> {:error, "Invalid Base64 content in #{path}"}
     end
   end
 
@@ -319,34 +323,34 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     work_dir = Path.join(tmp_dir, "propagate-#{repo_name}-#{:erlang.system_time(:millisecond)}")
 
     try do
-      with {:ok, _} <-
-             run_git_command([
-               "clone",
-               "--quiet",
-               "git@github.com:#{full_repo_name}.git",
-               work_dir
-             ]) do
-        # Step 1: Apply template updates to main branch
-        template_count =
-          if not Enum.empty?(template_updates) do
-            apply_template_files(
-              work_dir,
-              config.github_org,
-              template_repo,
-              template_updates,
-              opts
-            )
-          else
-            0
-          end
+      case run_git_command([
+             "clone",
+             "--quiet",
+             "git@github.com:#{full_repo_name}.git",
+             work_dir
+           ]) do
+        {:ok, _} ->
+          # Step 1: Apply template updates to main branch
+          template_count =
+            if Enum.empty?(template_updates) do
+              0
+            else
+              apply_template_files(
+                work_dir,
+                config.github_org,
+                template_repo,
+                template_updates,
+                opts
+              )
+            end
 
-        # Step 2: Propagate through ALL draft branches in sequence
-        # This ensures changes flow through the entire branch hierarchy
-        branch_count = propagate_through_all_branches(work_dir, opts)
+          # Step 2: Propagate through ALL draft branches in sequence
+          # This ensures changes flow through the entire branch hierarchy
+          branch_count = propagate_through_all_branches(work_dir, opts)
 
-        {:ok,
-         {:applied_and_propagated, %{template_files: template_count, branches: branch_count}}}
-      else
+          {:ok,
+           {:applied_and_propagated, %{template_files: template_count, branches: branch_count}}}
+
         {:error, reason} ->
           {:error, "Failed to clone: #{reason}"}
       end
@@ -359,65 +363,80 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     verbose = opts[:verbose]
 
     # Checkout main branch
-    with {:ok, _} <- run_git_command(["checkout", "main"], work_dir) do
-      # Copy each file from template, tracking successes
-      results =
-        Enum.map(files, fn file ->
-          with {:ok, content} <- get_file_content(org, template_repo, file, "main"),
-               file_path = Path.join(work_dir, file),
-               :ok <- File.mkdir_p(Path.dirname(file_path)),
-               :ok <- File.write(file_path, content) do
-            if verbose do
-              Logger.info("📄 Updated #{file}")
-            end
+    case run_git_command(["checkout", "main"], work_dir) do
+      {:ok, _} ->
+        copy_and_commit_template_files(work_dir, org, template_repo, files, opts)
 
-            {:ok, file}
-          else
-            {:error, reason} ->
-              if verbose do
-                Logger.warning("⚠️ Failed to update #{file}: #{inspect(reason)}")
-              end
-
-              {:error, file, reason}
-          end
-        end)
-
-      success_count = Enum.count(results, fn r -> match?({:ok, _}, r) end)
-
-      if success_count > 0 do
-        # Add only the files that were successfully updated
-        updated_files =
-          results
-          |> Enum.filter(fn r -> match?({:ok, _}, r) end)
-          |> Enum.map(fn {:ok, file} -> file end)
-
-        Enum.each(updated_files, fn file ->
-          run_git_command(["add", file], work_dir)
-        end)
-
-        # Commit and push
-        with {:ok, _} <-
-               run_git_command(
-                 ["commit", "-m", "Update workflow files from template"],
-                 work_dir
-               ),
-             {:ok, _} <- run_git_command(["push"], work_dir) do
-          success_count
-        else
-          {:error, reason} ->
-            if verbose do
-              Logger.warning("⚠️ Failed to commit/push: #{reason}")
-            end
-
-            0
-        end
-      else
-        0
-      end
-    else
       {:error, reason} ->
         if verbose do
           Logger.warning("⚠️ Failed to checkout main: #{reason}")
+        end
+
+        0
+    end
+  end
+
+  defp copy_and_commit_template_files(work_dir, org, template_repo, files, opts) do
+    verbose = opts[:verbose]
+
+    # Copy each file from template, tracking successes
+    results =
+      Enum.map(files, fn file ->
+        copy_template_file(work_dir, org, template_repo, file, verbose)
+      end)
+
+    success_count = Enum.count(results, fn r -> match?({:ok, _}, r) end)
+
+    if success_count > 0 do
+      commit_updated_files(work_dir, results, success_count, verbose)
+    else
+      0
+    end
+  end
+
+  defp copy_template_file(work_dir, org, template_repo, file, verbose) do
+    with {:ok, content} <- get_file_content(org, template_repo, file, "main"),
+         file_path = Path.join(work_dir, file),
+         :ok <- File.mkdir_p(Path.dirname(file_path)),
+         :ok <- File.write(file_path, content) do
+      if verbose do
+        Logger.info("📄 Updated #{file}")
+      end
+
+      {:ok, file}
+    else
+      {:error, reason} ->
+        if verbose do
+          Logger.warning("⚠️ Failed to update #{file}: #{inspect(reason)}")
+        end
+
+        {:error, file, reason}
+    end
+  end
+
+  defp commit_updated_files(work_dir, results, success_count, verbose) do
+    # Add only the files that were successfully updated
+    updated_files =
+      results
+      |> Enum.filter(fn r -> match?({:ok, _}, r) end)
+      |> Enum.map(fn {:ok, file} -> file end)
+
+    Enum.each(updated_files, fn file ->
+      run_git_command(["add", file], work_dir)
+    end)
+
+    # Commit and push
+    with {:ok, _} <-
+           run_git_command(
+             ["commit", "-m", "Update workflow files from template"],
+             work_dir
+           ),
+         {:ok, _} <- run_git_command(["push"], work_dir) do
+      success_count
+    else
+      {:error, reason} ->
+        if verbose do
+          Logger.warning("⚠️ Failed to commit/push: #{reason}")
         end
 
         0
@@ -428,6 +447,25 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     verbose = opts[:verbose]
 
     # Fetch all remote branches
+    fetch_all_branches(work_dir, verbose)
+
+    # Get list of remote draft branches
+    case run_git_command(["branch", "-r"], work_dir) do
+      {:ok, output} ->
+        output
+        |> parse_draft_branches()
+        |> merge_through_draft_chain(work_dir, opts)
+
+      {:error, reason} ->
+        if verbose do
+          Logger.warning("⚠️ Failed to list branches: #{reason}")
+        end
+
+        0
+    end
+  end
+
+  defp fetch_all_branches(work_dir, verbose) do
     case run_git_command(["fetch", "--all"], work_dir) do
       {:ok, _} ->
         :ok
@@ -437,51 +475,49 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
           Logger.warning("⚠️ Failed to fetch: #{reason}")
         end
     end
+  end
 
-    # Get list of remote draft branches
-    case run_git_command(["branch", "-r"], work_dir) do
-      {:ok, output} ->
-        draft_branches =
-          output
-          |> String.split("\n")
-          |> Enum.map(&String.trim/1)
-          |> Enum.filter(fn branch ->
-            String.starts_with?(branch, "origin/") and
-              Regex.match?(@draft_branch_pattern, String.replace_prefix(branch, "origin/", ""))
-          end)
-          |> Enum.map(fn branch -> String.replace_prefix(branch, "origin/", "") end)
+  defp parse_draft_branches(output) do
+    draft_branches =
+      output
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.filter(fn branch ->
+        String.starts_with?(branch, "origin/") and
+          Regex.match?(@draft_branch_pattern, String.replace_prefix(branch, "origin/", ""))
+      end)
+      |> Enum.map(fn branch -> String.replace_prefix(branch, "origin/", "") end)
 
-        # Sort draft branches (sort_draft_branches always returns {:ok, sorted})
-        {:ok, sorted_branches} = sort_draft_branches(draft_branches)
+    # Sort draft branches (sort_draft_branches always returns {:ok, sorted})
+    {:ok, sorted_branches} = sort_draft_branches(draft_branches)
+    sorted_branches
+  end
 
-        if Enum.empty?(sorted_branches) do
-          0
-        else
-          # Build branch pairs: main → 0th, 0th → 1st, 1st → 2nd, ...
-          pairs = build_branch_pairs(["main" | sorted_branches])
+  defp merge_through_draft_chain(sorted_branches, work_dir, opts) do
+    if Enum.empty?(sorted_branches) do
+      0
+    else
+      # Build branch pairs: main → 0th, 0th → 1st, 1st → 2nd, ...
+      pairs = build_branch_pairs(["main" | sorted_branches])
 
-          # Merge through the chain
-          results =
-            Enum.map(pairs, fn {lower, upper} ->
-              result = merge_branch(work_dir, lower, upper, opts)
+      # Merge through the chain
+      results =
+        Enum.map(pairs, fn {lower, upper} ->
+          merge_branch_pair(work_dir, lower, upper, opts)
+        end)
 
-              if verbose and result == :ok do
-                Logger.info("✅ Merged #{lower} into #{upper}")
-              end
-
-              result
-            end)
-
-          Enum.count(results, fn r -> r == :ok end)
-        end
-
-      {:error, reason} ->
-        if verbose do
-          Logger.warning("⚠️ Failed to list branches: #{reason}")
-        end
-
-        0
+      Enum.count(results, fn r -> r == :ok end)
     end
+  end
+
+  defp merge_branch_pair(work_dir, lower, upper, opts) do
+    result = merge_branch(work_dir, lower, upper, opts)
+
+    if opts[:verbose] and result == :ok do
+      Logger.info("✅ Merged #{lower} into #{upper}")
+    end
+
+    result
   end
 
   @doc """
@@ -563,7 +599,6 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   end
 
   defp build_branch_pairs([_single]), do: []
-  defp build_branch_pairs([]), do: []
 
   defp build_branch_pairs([first | rest]) do
     case rest do
@@ -697,23 +732,23 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     lines = []
 
     lines =
-      if not Enum.empty?(updates) do
+      if Enum.empty?(updates) do
+        lines
+      else
         file_list = Enum.map(updates, fn f -> "   - #{Path.basename(f)}" end)
         lines ++ ["📄 Would update from template:"] ++ file_list
-      else
-        lines
       end
 
     lines =
-      if not Enum.empty?(issues) do
+      if Enum.empty?(issues) do
+        lines
+      else
         issue_list =
           Enum.map(issues, fn {lower, upper, ahead_by} ->
             "   - #{upper} is missing #{ahead_by} commits from #{lower}"
           end)
 
         lines ++ ["📋 Would merge:"] ++ issue_list
-      else
-        lines
       end
 
     "📋 #{repo_name}:\n" <> Enum.join(lines, "\n")

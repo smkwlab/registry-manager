@@ -20,8 +20,6 @@ defmodule RegistryManager.Commands.InferStudentId do
 
   alias RegistryManager.{GitHubAPI, Repository}
 
-  require Logger
-
   @doc """
   infer-student-idコマンドを実行
 

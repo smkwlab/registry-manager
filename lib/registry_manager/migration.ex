@@ -237,7 +237,7 @@ defmodule RegistryManager.Migration do
     Require migration:    #{stats.migrated}
     Migration errors:     #{length(stats.errors)}
 
-    #{if length(stats.errors) > 0 do
+    #{if stats.errors != [] do
       "Errors:\n" <> (stats.errors |> Enum.map(fn err -> "  - #{err.repo_name}: #{err.reason}" end) |> Enum.join("\n"))
     else
       "No migration errors detected."

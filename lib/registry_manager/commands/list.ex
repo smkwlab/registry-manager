@@ -446,7 +446,7 @@ defmodule RegistryManager.Commands.List do
   # 3. --owner-activity が指定された場合: Owner Activity のみ
   # 4. デフォルト: Last Activity のみ
   @spec determine_timestamp_visibility(keyword()) ::
-          {boolean(), boolean(), boolean()}
+          {false, boolean(), boolean()} | {true, false, boolean()}
   defp determine_timestamp_visibility(opts) do
     show_registry_updated = Keyword.get(opts, :show_registry_updated, false)
     show_both = Keyword.get(opts, :show_both_timestamps, false)

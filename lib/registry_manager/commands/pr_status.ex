@@ -16,9 +16,9 @@ defmodule RegistryManager.Commands.PrStatus do
   - Use `--no-cache` to bypass cache
   """
 
+  alias RegistryManager.Cache
   alias RegistryManager.GitHubAPI
   alias RegistryManager.GitHubAPI.{Client, Parser}
-  alias RegistryManager.Cache
 
   @valid_formats ["table", "csv", "json"]
   # Issue #111: Added master and other types
@@ -184,28 +184,32 @@ defmodule RegistryManager.Commands.PrStatus do
     pr_data =
       repositories
       |> Enum.map(fn {repo_name, _repo_data} ->
-        if no_cache do
-          # --no-cache オプション指定時はキャッシュをバイパス
-          fetch_single_repo_pr_data(repo_name, opts)
-        else
-          # デフォルト：キャッシュを確認し、なければAPIからフェッチ
-          case try_get_cached_pr_data(repo_name, test_params) do
-            {:ok, cached_data} ->
-              {repo_name, cached_data}
-
-            {:error, _} ->
-              # キャッシュミス - APIからフェッチ
-              result = fetch_single_repo_pr_data(repo_name, opts)
-              # キャッシュに保存
-              {_, pr_status} = result
-              save_single_repo_to_cache(repo_name, pr_status, opts, test_params)
-              result
-          end
-        end
+        fetch_repo_pr_data(repo_name, no_cache, opts, test_params)
       end)
       |> Enum.into(%{})
 
     {:ok, pr_data}
+  end
+
+  # --no-cache オプション指定時はキャッシュをバイパス
+  defp fetch_repo_pr_data(repo_name, true, opts, _test_params) do
+    fetch_single_repo_pr_data(repo_name, opts)
+  end
+
+  # デフォルト：キャッシュを確認し、なければAPIからフェッチ
+  defp fetch_repo_pr_data(repo_name, false, opts, test_params) do
+    case try_get_cached_pr_data(repo_name, test_params) do
+      {:ok, cached_data} ->
+        {repo_name, cached_data}
+
+      {:error, _} ->
+        # キャッシュミス - APIからフェッチ
+        result = fetch_single_repo_pr_data(repo_name, opts)
+        # キャッシュに保存
+        {_, pr_status} = result
+        save_single_repo_to_cache(repo_name, pr_status, opts, test_params)
+        result
+    end
   end
 
   defp fetch_single_repo_pr_data(repo_name, opts) do
@@ -363,9 +367,6 @@ defmodule RegistryManager.Commands.PrStatus do
       {:error, reason} ->
         # Issue #118: トークン取得エラー時のログ出力を追加
         Logger.warning("Failed to get GitHub token: #{inspect(reason)}")
-        nil
-
-      _ ->
         nil
     end
   end

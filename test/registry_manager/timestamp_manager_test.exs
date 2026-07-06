@@ -392,11 +392,8 @@ defmodule RegistryManager.TimestampManagerTest do
       display_timestamps = TimestampManager.extract_display_timestamps(data)
 
       # extract_display_timestamps は表示用のタイムスタンプのみを返す
-      assert Map.keys(display_timestamps) == [
-               :repository_created,
-               :registry_created,
-               :registry_updated
-             ]
+      assert Enum.sort(Map.keys(display_timestamps)) ==
+               Enum.sort([:repository_created, :registry_created, :registry_updated])
 
       refute Map.has_key?(display_timestamps, :student_id)
     end
