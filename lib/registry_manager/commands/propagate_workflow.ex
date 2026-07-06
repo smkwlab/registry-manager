@@ -734,30 +734,56 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   end
 
   defp merge_and_push(work_dir, lower, upper, verbose) do
-    case run_git_command(
-           ["merge", "origin/#{lower}", "-m", "Merge #{lower} to reconcile workflow history"],
-           work_dir
-         ) do
-      {:ok, output} ->
-        if String.contains?(output, "Already up to date") do
-          {:ok, :up_to_date}
-        else
+    # up-to-date 判定は merge 出力の文字列（git のバージョンや locale で表記が変わる）に
+    # 依存せず、ancestor 関係で事前に行う
+    if branch_up_to_date?(work_dir, lower) do
+      {:ok, :up_to_date}
+    else
+      case run_git_command(
+             ["merge", "origin/#{lower}", "-m", "Merge #{lower} to reconcile workflow history"],
+             work_dir
+           ) do
+        {:ok, _output} ->
           push_merged_branch(work_dir, lower, upper, verbose)
-        end
 
-      {:error, output} ->
-        log_merge_failure(lower, upper, output, verbose)
+        {:error, output} ->
+          log_merge_failure(lower, upper, output, verbose)
+          classify_merge_failure(work_dir, output)
+      end
+    end
+  end
 
-        if String.contains?(output, "CONFLICT") do
-          paths = unmerged_paths(work_dir)
-          run_git_command(["merge", "--abort"], work_dir)
+  # checkout 済みの upper（HEAD）が origin/lower を既に含んでいるか（fast-forward 不要）
+  defp branch_up_to_date?(work_dir, lower) do
+    match?(
+      {:ok, _},
+      run_git_command(["merge-base", "--is-ancestor", "origin/#{lower}", "HEAD"], work_dir)
+    )
+  end
 
-          {:error,
-           {:conflict,
-            %{types: conflict_types(output), paths: paths, reason: String.trim(output)}}}
-        else
-          {:error, {:git, %{types: [], paths: [], reason: String.trim(output)}}}
-        end
+  # conflict 判定も出力文字列ではなく unmerged パスの有無（plumbing、locale 非依存）で行う。
+  # conflict_types は表示用の best effort（locale 次第で空になり得る）
+  defp classify_merge_failure(work_dir, output) do
+    case unmerged_paths(work_dir) do
+      [] ->
+        {:error, {:git, %{types: [], paths: [], reason: String.trim(output)}}}
+
+      paths ->
+        abort_merge(work_dir)
+
+        {:error,
+         {:conflict, %{types: conflict_types(output), paths: paths, reason: String.trim(output)}}}
+    end
+  end
+
+  # merge --abort の失敗を握りつぶさず記録する（作業ディレクトリが中途状態で残る兆候）
+  defp abort_merge(work_dir) do
+    case run_git_command(["merge", "--abort"], work_dir) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("⚠️ merge --abort failed in #{work_dir}: #{String.trim(reason)}")
     end
   end
 
@@ -891,11 +917,11 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     "Merged #{merged} branch(es), #{up_to_date} already up-to-date"
   end
 
-  @doc """
-  Format a propagation failure (from `propagate_through_all_branches/2`)
-  into a human-readable multi-line message: which pair failed, why,
-  which paths conflict, progress so far, and which pairs were skipped.
-  """
+  # 伝播失敗（propagate_through_all_branches/2 の {:error, failure}）を
+  # 人間可読な複数行メッセージに整形する: どの pair がなぜ失敗したか、
+  # コンフリクトパス、そこまでの進捗、skip した pair。
+  # run/3 経由でのみ利用する内部関数だが、整形結果を直接検証するため @doc false で公開。
+  @doc false
   def format_propagation_failure(failure) do
     lines =
       [failure_header(failure)] ++
