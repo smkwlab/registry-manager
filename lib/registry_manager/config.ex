@@ -216,21 +216,19 @@ defmodule RegistryManager.Config do
     |> apply_csv_convention()
   end
 
-  @doc """
-  Resolves csv_path by convention when it is unset (nil or empty string):
-  uses `~/.config/<github_org>/students.csv` if that file exists (issue #16).
-
-  Explicit csv_path (user config or REGISTRY_MANAGER_CSV_PATH) always wins.
-  The roster CSV stays a LOCAL file by policy — never commit it to any
-  repository or to the registry.
-  """
-  @spec apply_csv_convention(t(), String.t()) :: t()
-  def apply_csv_convention(config, home \\ System.user_home!())
+  # csv_path 未設定（nil / 空文字列）のとき、規約パス
+  # ~/.config/<github_org>/students.csv が存在すればそれを使う（issue #16）。
+  # 明示設定（config.json / REGISTRY_MANAGER_CSV_PATH）が常に優先。
+  # 名簿 CSV はローカル管理方針のためリポジトリ・レジストリには置かない。
+  # load_config の内部実装だが、home を注入したテストのために public にしている。
+  @doc false
+  @spec apply_csv_convention(t(), String.t() | nil) :: t()
+  def apply_csv_convention(config, home \\ System.user_home())
 
   def apply_csv_convention(%__MODULE__{csv_path: csv} = config, home) when csv in [nil, ""] do
-    conventional = conventional_csv_path(config.github_org, home)
+    conventional = safe_conventional_csv_path(config.github_org, home)
 
-    if File.exists?(conventional) do
+    if conventional && File.exists?(conventional) do
       %{config | csv_path: conventional}
     else
       %{config | csv_path: nil}
@@ -239,11 +237,20 @@ defmodule RegistryManager.Config do
 
   def apply_csv_convention(config, _home), do: config
 
+  # github_org / home が使えない環境（未設定・HOME なし）では規約導出をスキップ
+  defp safe_conventional_csv_path(github_org, home)
+       when is_binary(github_org) and github_org != "" and is_binary(home) do
+    conventional_csv_path(github_org, home)
+  end
+
+  defp safe_conventional_csv_path(_github_org, _home), do: nil
+
   @doc """
   Returns the conventional roster CSV path for an organization.
   """
   @spec conventional_csv_path(String.t(), String.t()) :: String.t()
-  def conventional_csv_path(github_org, home \\ System.user_home!()) do
+  def conventional_csv_path(github_org, home \\ System.user_home!())
+      when is_binary(github_org) and is_binary(home) do
     Path.join([home, ".config", github_org, "students.csv"])
   end
 

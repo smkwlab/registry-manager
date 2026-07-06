@@ -277,6 +277,25 @@ defmodule RegistryManager.ConfigTest do
       assert Config.apply_csv_convention(config, home).csv_path == nil
     end
 
+    test "skips the convention when github_org is nil or empty" do
+      home = make_home()
+      conventional = Path.join([home, ".config", "testorg", "students.csv"])
+      File.mkdir_p!(Path.dirname(conventional))
+      File.write!(conventional, "header\n")
+
+      assert Config.apply_csv_convention(%Config{csv_path: nil, github_org: nil}, home).csv_path ==
+               nil
+
+      assert Config.apply_csv_convention(%Config{csv_path: nil, github_org: ""}, home).csv_path ==
+               nil
+    end
+
+    test "skips the convention when the home directory is unavailable" do
+      config = %Config{csv_path: nil, github_org: "testorg"}
+
+      assert Config.apply_csv_convention(config, nil).csv_path == nil
+    end
+
     test "load_config applies the convention (no file for an unlikely org)", %{
       config_file: config_file
     } do
