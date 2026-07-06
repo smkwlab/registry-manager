@@ -260,7 +260,16 @@ defmodule RegistryManager.Commands.Init do
     "#{indent}#{key}: #{yaml_scalar(value)}\n"
   end
 
-  defp yaml_scalar(value) when is_binary(value), do: inspect(value)
+  # 安全な文字集合（org 名・repo 名・学籍番号などが該当）はクォートせず
+  # 素の YAML スカラーで書き、それ以外は inspect のダブルクォートで安全側に倒す
+  defp yaml_scalar(value) when is_binary(value) do
+    if value =~ ~r/\A[A-Za-z0-9_.\/-]+\z/ do
+      value
+    else
+      inspect(value)
+    end
+  end
+
   defp yaml_scalar(value), do: to_string(value)
 
   # --- 仕上げ ---
