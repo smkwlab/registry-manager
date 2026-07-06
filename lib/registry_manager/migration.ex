@@ -89,7 +89,7 @@ defmodule RegistryManager.Migration do
     end
   end
 
-  defp migrate_v1_entry(_repo_name, repo_info) do
+  defp migrate_v1_entry(repo_name, repo_info) do
     # Required fields (must exist)
     student_id = Map.get(repo_info, "student_id")
     repository_type = Map.get(repo_info, "repository_type")
@@ -100,7 +100,7 @@ defmodule RegistryManager.Migration do
       # Build v4 format entry
       base_entry = %{
         "student_id" => student_id,
-        "repository_type" => normalize_repository_type(repository_type)
+        "repository_type" => normalize_repository_type(repository_type, repo_name)
       }
 
       # Handle timestamps
@@ -116,9 +116,19 @@ defmodule RegistryManager.Migration do
       {:error, "Migration failed: #{inspect(error)}"}
   end
 
-  defp normalize_repository_type("thesis"), do: "sotsuron"
-  defp normalize_repository_type("ise"), do: "ise-report"
-  defp normalize_repository_type(type), do: type
+  # legacy の thesis は repo 名から実タイプを導出する（issue #11 / TMT#471:
+  # 実データでは thesis の大半が latex-template 派生の研究会 repo だった）
+  defp normalize_repository_type("thesis", repo_name) do
+    cond do
+      String.ends_with?(repo_name, "-sotsuron") -> "sotsuron"
+      String.ends_with?(repo_name, "-master") -> "master"
+      String.ends_with?(repo_name, "-thesis") -> "master"
+      true -> "latex"
+    end
+  end
+
+  defp normalize_repository_type("ise", _repo_name), do: "ise-report"
+  defp normalize_repository_type(type, _repo_name), do: type
 
   defp add_timestamps(entry, repo_info) do
     current_timestamp = generate_current_timestamp()

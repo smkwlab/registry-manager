@@ -93,7 +93,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | フィールド名 | 型 | 説明 | 制約 | 取得方法 |
 |-------------|---|------|------|---------|
 | `student_id` | string | 学生ID | 形式: `k##[a-z]{2}###` | 推論または手動指定 |
-| `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `sotsuron`, `thesis` | 推論または手動指定 |
+| `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `ise-report`, `sotsuron`, `master`, `latex`, `other` | 推論または手動指定 |
 | `repository_created_at` | string | リポジトリ作成日時 | ISO8601形式 | GitHub API |
 | `registry_created_at` | string | レジストリ初回登録日時 | ISO8601形式 | registry-manager |
 | `registry_updated_at` | string | レジストリ最終更新日時 | ISO8601形式 | registry-manager |
@@ -121,14 +121,16 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | タイプ | 説明 | 命名規則 |
 |--------|------|---------|
 | `wr` | 週報 | `*-wr` |
-| `ise` | ISE レポート | `*-ise-report*` |
+| `ise` / `ise-report` | ISE レポート | `*-ise-report*` |
 | `sotsuron` | 卒業論文 | `*-sotsuron` |
-| `thesis` | 論文（その他） | `*-memo*` など |
+| `master` | 修士論文 | `*-master` |
+| `latex` | latex-template 派生（研究会・学会原稿等。branch 追跡対象） | `*-fit*`, `*-hinokuni*` など任意 |
+| `other` | 上記以外（poster 等） | 任意 |
 
-**補足**: `sotsuron` は卒業論文本体のリポジトリ、`thesis` はそれ以外の
-論文・原稿系リポジトリ（研究メモ、学会・紀要投稿原稿など）を指す。
-命名規則は推論の目安であり、`thesis` は推論に一致しない名前でも
-明示指定で登録できる。
+**補足**: `thesis` は repository_type の語彙では**ない**（repo 名 suffix・
+文書種別 DOC_TYPE・「論文まとめ」フィルタ名としてのみ使用する。
+smkwlab/thesis-management-tools#471 の設計決定を参照）。
+命名規則は推論の目安であり、明示指定で任意タイプを登録できる。
 
 #### 2.3.2 タイプ推論ルール
 
@@ -137,7 +139,8 @@ Repository Name Pattern → Repository Type
 *-wr                   → wr
 *-ise-report*          → ise
 *-sotsuron             → sotsuron
-*-memo*                → thesis
+*-master / *-thesis    → master
+その他（latex-template 派生名） → latex
 ```
 
 ### 2.4 学生ID形式仕様

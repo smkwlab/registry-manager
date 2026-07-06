@@ -198,6 +198,17 @@ defmodule RegistryManager.ValidationTest do
       end)
     end
 
+    test "accepts master and latex as canonical types (issue #11)" do
+      assert :ok = Validation.validate_repository_type("master")
+      assert :ok = Validation.validate_repository_type("latex")
+    end
+
+    test "rejects thesis with guidance to the canonical vocabulary" do
+      assert {:error, message} = Validation.validate_repository_type("thesis")
+      assert message =~ "master"
+      assert message =~ "latex"
+    end
+
     test "handles unknown repository types" do
       # Test that unknown types don't crash
       result = Validation.validate_repository_type("unknown-type")
