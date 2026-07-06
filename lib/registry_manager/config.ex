@@ -181,16 +181,14 @@ defmodule RegistryManager.Config do
     end
   end
 
+  # YAML 1.2 は JSON の上位互換なので、YAML パーサ 1 本で
+  # config.yml と旧 config.json の両方を読める（issue #18）
   defp parse_config_file(config_file_path) do
-    with {:ok, content} <- File.read(config_file_path),
-         {:ok, config} <- Jason.decode(content) do
-      config
-    else
-      {:error, :enoent} ->
-        IO.puts(:stderr, "Failed to read config file: #{config_file_path}")
-        %{}
+    case YamlElixir.read_from_file(config_file_path) do
+      {:ok, config} when is_map(config) ->
+        config
 
-      {:error, _} ->
+      _ ->
         IO.puts(:stderr, "Failed to parse config file: #{config_file_path}")
         %{}
     end
@@ -200,8 +198,9 @@ defmodule RegistryManager.Config do
   Loads configuration with proper priority:
   User config > Environment variables > Default values
   """
-  @spec load_config(String.t()) :: t()
-  def load_config(config_file_path \\ get_default_config_path()) do
+  @spec load_config(String.t() | nil) :: t()
+  def load_config(config_file_path \\ nil) do
+    config_file_path = config_file_path || resolve_default_config_path()
     default_config = default_config()
 
     env_config =
@@ -286,12 +285,49 @@ defmodule RegistryManager.Config do
   end
 
   @doc """
-  Returns the default config file path.
+  Returns the default config file path (annotated YAML, issue #18).
   """
   @spec get_default_config_path() :: String.t()
   def get_default_config_path do
-    config_dir = Path.join([System.user_home!(), ".config", "registry-manager"])
-    Path.join(config_dir, "config.json")
+    Path.join(default_config_dir(), "config.yml")
+  end
+
+  @doc """
+  Returns the legacy JSON config path (one-generation fallback).
+  """
+  @spec get_legacy_config_path() :: String.t()
+  def get_legacy_config_path do
+    Path.join(default_config_dir(), "config.json")
+  end
+
+  # 探索順: config.yml → 旧 config.json（警告付き 1 世代 fallback）→ config.yml
+  # config_dir はテストのために注入可能
+  @doc false
+  @spec resolve_default_config_path(String.t()) :: String.t()
+  def resolve_default_config_path(config_dir \\ default_config_dir()) do
+    yml = Path.join(config_dir, "config.yml")
+    json = Path.join(config_dir, "config.json")
+
+    cond do
+      File.exists?(yml) ->
+        yml
+
+      File.exists?(json) ->
+        IO.puts(
+          :stderr,
+          "warning: config file \"config.json\" is deprecated, " <>
+            "rename it to \"config.yml\" (#{json})"
+        )
+
+        json
+
+      true ->
+        yml
+    end
+  end
+
+  defp default_config_dir do
+    Path.join([System.user_home!(), ".config", "registry-manager"])
   end
 
   @doc """

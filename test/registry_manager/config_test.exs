@@ -310,6 +310,77 @@ defmodule RegistryManager.ConfigTest do
     end
   end
 
+  describe "config file format (issue #18)" do
+    test "default config path is config.yml" do
+      assert String.ends_with?(Config.get_default_config_path(), "registry-manager/config.yml")
+    end
+
+    test "legacy config path is config.json" do
+      assert String.ends_with?(Config.get_legacy_config_path(), "registry-manager/config.json")
+    end
+
+    test "resolve_default_config_path prefers config.yml" do
+      dir = Path.join(System.tmp_dir!(), "rm-fmt-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+      File.write!(Path.join(dir, "config.yml"), "github_org: yml_org\n")
+      File.write!(Path.join(dir, "config.json"), ~s({"github_org": "json_org"}))
+
+      assert Config.resolve_default_config_path(dir) == Path.join(dir, "config.yml")
+    end
+
+    test "falls back to legacy config.json with a deprecation warning" do
+      dir = Path.join(System.tmp_dir!(), "rm-fmt-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+      File.write!(Path.join(dir, "config.json"), ~s({"github_org": "json_org"}))
+
+      stderr =
+        ExUnit.CaptureIO.capture_io(:stderr, fn ->
+          assert Config.resolve_default_config_path(dir) == Path.join(dir, "config.json")
+        end)
+
+      assert stderr =~ "deprecated"
+      assert stderr =~ "config.yml"
+    end
+
+    test "resolves to config.yml when neither file exists" do
+      dir = Path.join(System.tmp_dir!(), "rm-fmt-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      assert Config.resolve_default_config_path(dir) == Path.join(dir, "config.yml")
+    end
+
+    test "load_user_config parses annotated YAML" do
+      path = Path.join(System.tmp_dir!(), "rm-yaml-#{System.unique_integer([:positive])}.yml")
+
+      File.write!(path, """
+      # comment line
+      github_org: yamlorg
+      registry_repo: yamlorg/thesis-student-registry
+      test_student_ids: [k99rs998, k99rs999]
+      """)
+
+      on_exit(fn -> File.rm(path) end)
+
+      config = Config.load_user_config(path)
+      assert config["github_org"] == "yamlorg"
+      assert config["registry_repo"] == "yamlorg/thesis-student-registry"
+      assert config["test_student_ids"] == ["k99rs998", "k99rs999"]
+    end
+
+    test "load_user_config still parses legacy JSON content (YAML superset)" do
+      path = Path.join(System.tmp_dir!(), "rm-json-#{System.unique_integer([:positive])}.json")
+      File.write!(path, ~s({"github_org": "jsonorg", "cache": {"enabled": false}}))
+      on_exit(fn -> File.rm(path) end)
+
+      config = Config.load_user_config(path)
+      assert config["github_org"] == "jsonorg"
+      assert config["cache"]["enabled"] == false
+    end
+  end
+
   describe "load_config/1" do
     test "merges configurations with correct priority", %{config_file: config_file} do
       # 既存の環境変数をクリア
@@ -355,8 +426,9 @@ defmodule RegistryManager.ConfigTest do
       non_existent_file = Path.join(System.tmp_dir!(), "non_existent.json")
       config = Config.load_config(non_existent_file)
 
-      # デフォルト値が返される
-      assert config.csv_path == nil
+      # デフォルト値が返される（csv_path は実行環境に規約ファイル
+      # ~/.config/smkwlab/students.csv があればそれ、無ければ nil）
+      assert config.csv_path in [nil, Config.conventional_csv_path("smkwlab")]
       assert config.registry_repo == nil
       assert config.github_org == "smkwlab"
     end
@@ -365,7 +437,7 @@ defmodule RegistryManager.ConfigTest do
   describe "get_default_config_path/0" do
     test "returns path in user's config directory" do
       path = Config.get_default_config_path()
-      assert String.ends_with?(path, ".config/registry-manager/config.json")
+      assert String.ends_with?(path, ".config/registry-manager/config.yml")
     end
   end
 

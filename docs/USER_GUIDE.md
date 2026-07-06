@@ -55,22 +55,22 @@ ls -la registry-manager
 
 ### 設定
 
-#### 1. 基本設定（config/config.exs）
+#### 1. 基本設定（~/.config/registry-manager/config.yml）
 
-```elixir
-config :registry_manager,
-  # GitHub API設定
-  github_token: System.get_env("GITHUB_TOKEN"),
-  organization: "smkwlab",
-  repository: "thesis-student-registry",
-  file_path: "data/repositories.json",
-  
-  # キャッシュ設定
-  cache_ttl: 300,  # 5分
-  
-  # 名簿 CSV（任意。氏名解決用。未設定時は ~/.config/<github_org>/students.csv を規約として参照）
-  csv_path: "/path/to/students.csv"
+`registry-manager init` が生成します（注釈付き YAML。旧 config.json は
+1 世代の間、警告付きで読み込まれます）:
+
+```yaml
+github_org: smkwlab
+# レジストリデータリポジトリ（owner/repo）。書き込み先のため明示必須
+registry_repo: smkwlab/thesis-student-registry
+
+# 名簿 CSV（任意。氏名解決用。未設定時は ~/.config/<github_org>/students.csv を規約として参照）
+# csv_path: /path/to/students.csv
 ```
+
+レジストリデータファイルはリポジトリ内の `data/registry.json` に固定です。
+全設定項目は [CONFIGURATION.md](CONFIGURATION.md) を参照してください。
 
 #### 2. 環境変数の設定
 
@@ -442,10 +442,10 @@ echo $GITHUB_TOKEN
 **解決策:**
 ```bash
 # 1. 名簿 CSV のパスを確認する
-#    （config.json の csv_path、または環境変数 REGISTRY_MANAGER_CSV_PATH。
+#    （config.yml の csv_path、または環境変数 REGISTRY_MANAGER_CSV_PATH。
 #     どちらも未設定なら規約パス ~/.config/<github_org>/students.csv を参照し、
 #     それも無ければ氏名解決は無効 = 名前が Unknown になる原因）
-cat ~/.config/registry-manager/config.json
+cat ~/.config/registry-manager/config.yml
 echo "REGISTRY_MANAGER_CSV_PATH=$REGISTRY_MANAGER_CSV_PATH"
 
 # 2. 確認したパスを代入して検査する
