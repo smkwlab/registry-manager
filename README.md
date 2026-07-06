@@ -23,7 +23,7 @@ GitHub 上のレジストリデータリポジトリに置いた `data/registry.
 
 ```bash
 # private データリポジトリの作成 + data/registry.json / README の初期投入 +
-# ~/.config/registry-manager/config.json の生成までを冪等に行う
+# ~/.config/registry-manager/config.yml の生成までを冪等に行う
 registry-manager init your-org/your-student-registry
 
 # 既存の config を上書きする場合
@@ -58,15 +58,15 @@ registry-manager init your-org/your-student-registry --force
 
 ### 2. 設定ファイルの作成
 
-`~/.config/registry-manager/config.json`:
+`~/.config/registry-manager/config.yml`（注釈付き YAML。旧 `config.json` は
+読み込まれないため、`mv config.json config.yml` でリネームして移行する —
+YAML 1.2 ⊃ JSON なので中身はそのまま有効）:
 
-```json
-{
-  "github_org": "your-org",
-  "registry_repo": "your-org/your-student-registry",
-  "csv_path": "/path/to/students.csv",
-  "test_student_ids": ["k99rs998", "k99rs999"]
-}
+```yaml
+github_org: your-org
+registry_repo: your-org/your-student-registry
+# csv_path: /path/to/students.csv
+# test_student_ids: [k99rs998, k99rs999]
 ```
 
 | キー | 必須 | 説明 |

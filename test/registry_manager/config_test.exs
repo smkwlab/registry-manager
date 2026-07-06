@@ -310,6 +310,40 @@ defmodule RegistryManager.ConfigTest do
     end
   end
 
+  describe "config file format (issue #18)" do
+    test "default config path is config.yml" do
+      assert String.ends_with?(Config.get_default_config_path(), "registry-manager/config.yml")
+    end
+
+    test "load_user_config parses annotated YAML" do
+      path = Path.join(System.tmp_dir!(), "rm-yaml-#{System.unique_integer([:positive])}.yml")
+
+      File.write!(path, """
+      # comment line
+      github_org: yamlorg
+      registry_repo: yamlorg/thesis-student-registry
+      test_student_ids: [k99rs998, k99rs999]
+      """)
+
+      on_exit(fn -> File.rm(path) end)
+
+      config = Config.load_user_config(path)
+      assert config["github_org"] == "yamlorg"
+      assert config["registry_repo"] == "yamlorg/thesis-student-registry"
+      assert config["test_student_ids"] == ["k99rs998", "k99rs999"]
+    end
+
+    test "load_user_config still parses legacy JSON content (YAML superset)" do
+      path = Path.join(System.tmp_dir!(), "rm-json-#{System.unique_integer([:positive])}.json")
+      File.write!(path, ~s({"github_org": "jsonorg", "cache": {"enabled": false}}))
+      on_exit(fn -> File.rm(path) end)
+
+      config = Config.load_user_config(path)
+      assert config["github_org"] == "jsonorg"
+      assert config["cache"]["enabled"] == false
+    end
+  end
+
   describe "load_config/1" do
     test "merges configurations with correct priority", %{config_file: config_file} do
       # 既存の環境変数をクリア
@@ -352,20 +386,29 @@ defmodule RegistryManager.ConfigTest do
     end
 
     test "works with default config file path when file doesn't exist" do
-      non_existent_file = Path.join(System.tmp_dir!(), "non_existent.json")
+      non_existent_file = Path.join(System.tmp_dir!(), "non_existent.yml")
       config = Config.load_config(non_existent_file)
 
-      # デフォルト値が返される
-      assert config.csv_path == nil
       assert config.registry_repo == nil
       assert config.github_org == "smkwlab"
+    end
+
+    test "csv_path defaults to nil when no CSV is configured" do
+      # github_org を実在しない org にして、実行環境の規約ファイルに依存しない
+      path = Path.join(System.tmp_dir!(), "rm-detcsv-#{System.unique_integer([:positive])}.yml")
+      File.write!(path, "github_org: no-such-org-#{System.unique_integer([:positive])}\n")
+      on_exit(fn -> File.rm(path) end)
+
+      config = Config.load_config(path)
+
+      assert config.csv_path == nil
     end
   end
 
   describe "get_default_config_path/0" do
     test "returns path in user's config directory" do
       path = Config.get_default_config_path()
-      assert String.ends_with?(path, ".config/registry-manager/config.json")
+      assert String.ends_with?(path, ".config/registry-manager/config.yml")
     end
   end
 

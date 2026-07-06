@@ -83,7 +83,7 @@ defmodule RegistryManager.Commands.InitTest do
       refute readme =~ ~r/^\s+#/m
       assert readme =~ "private"
 
-      config = Jason.decode!(File.read!(config_path))
+      {:ok, config} = YamlElixir.read_from_string(File.read!(config_path))
       assert config["registry_repo"] == "testorg/test-registry"
       assert config["github_org"] == "testorg"
     end
@@ -170,9 +170,27 @@ defmodule RegistryManager.Commands.InitTest do
 
       assert {:ok, _} = Init.run(["testorg/test-registry"], [], deps)
 
-      config = Jason.decode!(File.read!(config_path))
+      {:ok, config} = YamlElixir.read_from_string(File.read!(config_path))
       assert config["registry_repo"] == "old/repo"
       assert Enum.any?(collect_output(:warn), &(&1 =~ "--force"))
+    end
+
+    test "writes an annotated YAML config (issue #18)" do
+      config_path = tmp_config_path()
+      on_exit(fn -> File.rm(config_path) end)
+
+      deps = %{api: api_bootstrap_stub(self()), output: output_stub(), config_path: config_path}
+
+      assert {:ok, _} = Init.run(["testorg/test-registry"], [], deps)
+
+      content = File.read!(config_path)
+      assert content =~ ~r/^# /m
+      assert content =~ ~r/^github_org: /m
+      assert content =~ ~r/^registry_repo: /m
+
+      {:ok, parsed} = YamlElixir.read_from_string(content)
+      assert parsed["registry_repo"] == "testorg/test-registry"
+      assert parsed["github_org"] == "testorg"
     end
 
     test "recovers from a corrupt existing config with --force" do
@@ -184,7 +202,7 @@ defmodule RegistryManager.Commands.InitTest do
 
       assert {:ok, _} = Init.run(["testorg/test-registry"], [force: true], deps)
 
-      config = Jason.decode!(File.read!(config_path))
+      {:ok, config} = YamlElixir.read_from_string(File.read!(config_path))
       assert config["registry_repo"] == "testorg/test-registry"
       assert Enum.any?(collect_output(:warn), &(&1 =~ "解析できません"))
     end
@@ -203,7 +221,7 @@ defmodule RegistryManager.Commands.InitTest do
 
       assert {:ok, _} = Init.run(["testorg/test-registry"], [force: true], deps)
 
-      config = Jason.decode!(File.read!(config_path))
+      {:ok, config} = YamlElixir.read_from_string(File.read!(config_path))
       assert config["registry_repo"] == "testorg/test-registry"
       assert config["github_org"] == "testorg"
       assert config["csv_path"] == "/x.csv"

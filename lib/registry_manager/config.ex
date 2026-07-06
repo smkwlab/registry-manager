@@ -181,16 +181,14 @@ defmodule RegistryManager.Config do
     end
   end
 
+  # YAML 1.2 は JSON の上位互換なので、YAML パーサ 1 本で
+  # config.yml と旧 config.json の両方を読める（issue #18）
   defp parse_config_file(config_file_path) do
-    with {:ok, content} <- File.read(config_file_path),
-         {:ok, config} <- Jason.decode(content) do
-      config
-    else
-      {:error, :enoent} ->
-        IO.puts(:stderr, "Failed to read config file: #{config_file_path}")
-        %{}
+    case YamlElixir.read_from_file(config_file_path) do
+      {:ok, config} when is_map(config) ->
+        config
 
-      {:error, _} ->
+      _ ->
         IO.puts(:stderr, "Failed to parse config file: #{config_file_path}")
         %{}
     end
@@ -286,12 +284,14 @@ defmodule RegistryManager.Config do
   end
 
   @doc """
-  Returns the default config file path.
+  Returns the default config file path (annotated YAML, issue #18).
+
+  旧 config.json は読み込まない（公開前に fallback を持たない決定）。
+  移行は `mv config.json config.yml`（YAML 1.2 ⊃ JSON なのでそのまま有効）。
   """
   @spec get_default_config_path() :: String.t()
   def get_default_config_path do
-    config_dir = Path.join([System.user_home!(), ".config", "registry-manager"])
-    Path.join(config_dir, "config.json")
+    Path.join([System.user_home!(), ".config", "registry-manager", "config.yml"])
   end
 
   @doc """
