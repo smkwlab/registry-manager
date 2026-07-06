@@ -105,6 +105,66 @@ defmodule RegistryManager.Commands.PropagateWorkflowGitTest do
     end
   end
 
+  # push 可能な remote と作業ディレクトリ（seed コミット済み）を構築して返す
+  defp setup_pushable_repo(base) do
+    remote = Path.join(base, "commit-remote.git")
+    seed = Path.join(base, "commit-seed")
+    File.mkdir_p!(remote)
+    File.mkdir_p!(seed)
+
+    git!(["init", "--bare", "--initial-branch=main", "."], remote)
+    git!(["init", "--initial-branch=main", "."], seed)
+    git!(["config", "user.email", "test@example.com"], seed)
+    git!(["config", "user.name", "Test User"], seed)
+    git!(["remote", "add", "origin", remote], seed)
+    write_and_commit(seed, "README.md", "seed\n", "seed")
+    git!(["push", "-u", "origin", "main"], seed)
+
+    work_dir = Path.join(base, "commit-work")
+    git!(["clone", "--quiet", remote, work_dir], base)
+    git!(["config", "user.email", "test@example.com"], work_dir)
+    git!(["config", "user.name", "Test User"], work_dir)
+
+    %{remote: remote, work_dir: work_dir}
+  end
+
+  describe "commit_updated_files/4" do
+    test "commits and pushes updated files, returning success_count", %{base: base} do
+      %{work_dir: work_dir, remote: remote} = setup_pushable_repo(base)
+
+      File.write!(Path.join(work_dir, "a.txt"), "A\n")
+      File.write!(Path.join(work_dir, "b.txt"), "B\n")
+      results = [{:ok, "a.txt"}, {:ok, "b.txt"}, {:error, "c.txt", :not_found}]
+
+      assert PropagateWorkflow.commit_updated_files(work_dir, results, 2, false) == 2
+
+      verify = Path.join(base, "verify-commit")
+      git!(["clone", "--quiet", remote, verify], base)
+      assert File.read!(Path.join(verify, "a.txt")) == "A\n"
+      assert File.read!(Path.join(verify, "b.txt")) == "B\n"
+    end
+
+    test "returns 0 and does not commit when git add fails", %{base: base} do
+      %{work_dir: work_dir, remote: remote} = setup_pushable_repo(base)
+
+      File.write!(Path.join(work_dir, "a.txt"), "A\n")
+      # missing.txt は存在しない → git add が失敗する
+      results = [{:ok, "a.txt"}, {:ok, "missing.txt"}]
+
+      head_before = String.trim(git!(["rev-parse", "HEAD"], work_dir))
+
+      assert PropagateWorkflow.commit_updated_files(work_dir, results, 2, false) == 0
+
+      # ローカルにもリモートにも新しいコミットが積まれていないこと
+      assert String.trim(git!(["rev-parse", "HEAD"], work_dir)) == head_before
+
+      verify = Path.join(base, "verify-no-commit")
+      git!(["clone", "--quiet", remote, verify], base)
+      assert String.trim(git!(["rev-parse", "HEAD"], verify)) == head_before
+      refute File.exists?(Path.join(verify, "a.txt"))
+    end
+  end
+
   describe "run_git_command/2" do
     test "returns {:ok, output} for a successful command", %{base: base} do
       repo = Path.join(base, "r")

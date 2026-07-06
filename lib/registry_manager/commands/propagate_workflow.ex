@@ -416,19 +416,17 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     end
   end
 
-  defp commit_updated_files(work_dir, results, success_count, verbose) do
+  # @doc false: テスト用に公開（ローカル git リポジトリで add/commit/push を検証するため）。
+  @doc false
+  def commit_updated_files(work_dir, results, success_count, verbose) do
     # Add only the files that were successfully updated
     updated_files =
       results
       |> Enum.filter(fn r -> match?({:ok, _}, r) end)
       |> Enum.map(fn {:ok, file} -> file end)
 
-    Enum.each(updated_files, fn file ->
-      run_git_command(["add", file], work_dir)
-    end)
-
-    # Commit and push
-    with {:ok, _} <-
+    with :ok <- add_files(updated_files, work_dir),
+         {:ok, _} <-
            run_git_command(
              ["commit", "-m", "Update workflow files from template"],
              work_dir
@@ -438,11 +436,20 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     else
       {:error, reason} ->
         if verbose do
-          Logger.warning("⚠️ Failed to commit/push: #{reason}")
+          Logger.warning("⚠️ Failed to commit updated files: #{reason}")
         end
 
         0
     end
+  end
+
+  defp add_files(files, work_dir) do
+    Enum.reduce_while(files, :ok, fn file, :ok ->
+      case run_git_command(["add", file], work_dir) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, "git add #{file}: #{reason}"}}
+      end
+    end)
   end
 
   # @doc false: テスト用に公開（ローカル git リポジトリでマージ連鎖を検証するため）。
