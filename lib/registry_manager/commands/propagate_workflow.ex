@@ -16,7 +16,7 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
 
   - `--dry-run`: Show what would be done without making changes
   - `--all`: Process all registered repositories
-  - `--type`: Filter repositories by type (wr, ise, sotsuron, master, thesis, latex)
+  - `--type`: Filter repositories by type (wr, ise, sotsuron, master, thesis, latex, other)
   - `--from-template`: Apply workflow file updates from template repository before propagating
   - `--verbose`: Show detailed output
 

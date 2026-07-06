@@ -117,7 +117,10 @@ defmodule RegistryManager.Migration do
   end
 
   # legacy の thesis は repo 名から実タイプを導出する（issue #11 / TMT#471:
-  # 実データでは thesis の大半が latex-template 派生の研究会 repo だった）
+  # 実データでは thesis の大半が latex-template 派生の研究会 repo だった）。
+  # -sotsuron / -master 分岐は現本番データには存在しない組み合わせだが、
+  # v1 時代のテストデータ（例: k19rs999-sotsuron + thesis）と過去バックアップの
+  # 移行に対する防御として残している
   defp normalize_repository_type("thesis", repo_name) do
     cond do
       String.ends_with?(repo_name, "-sotsuron") -> "sotsuron"
