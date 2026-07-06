@@ -2,6 +2,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
   use ExUnit.Case, async: true
 
   alias RegistryManager.Repository
+  alias RegistryManager.Test.GitHubAPIMock
 
   describe "add_with_inference/2" do
     setup do
@@ -9,18 +10,18 @@ defmodule RegistryManager.RepositoryInferenceTest do
       Application.put_env(:registry_manager, :use_github_mock, true)
 
       # Reset mock responses for clean state
-      RegistryManager.Test.GitHubAPIMock.reset_mock_responses()
+      GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
         Application.delete_env(:registry_manager, :env)
         Application.delete_env(:registry_manager, :use_github_mock)
-        RegistryManager.Test.GitHubAPIMock.cleanup_mock()
+        GitHubAPIMock.cleanup_mock()
       end)
     end
 
     test "successfully infers student_id from CSV via GitHub owner" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
         assert repo_name == "smkwlab/k21rs001-sotsuron"
 
         {:ok,
@@ -30,16 +31,14 @@ defmodule RegistryManager.RepositoryInferenceTest do
          }}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data,
-                                                                                         _sha,
-                                                                                         _message ->
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data, _sha, _message ->
         assert new_data["k21rs001-sotsuron"]["student_id"] == "k21rs001"
         assert new_data["k21rs001-sotsuron"]["repository_type"] == "sotsuron"
         assert new_data["k21rs001-sotsuron"]["github_username"] == "taro-yamada"
         {:ok, "Success"}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
         {:ok, {%{}, "mock_sha"}}
       end)
 
@@ -49,7 +48,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "fails when GitHub owner not found in CSV (no fallback to repo name)" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
         assert repo_name == "smkwlab/k21rs003-wr"
 
         {:ok,
@@ -59,7 +58,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
          }}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
         {:ok, {%{}, "mock_sha"}}
       end)
 
@@ -70,7 +69,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "handles full repository path (org/repo)" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
         assert repo_name == "smkwlab/k21rs002-ise"
 
         {:ok,
@@ -80,9 +79,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
          }}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data,
-                                                                                         _sha,
-                                                                                         _message ->
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data, _sha, _message ->
         # Repository key should not have org prefix
         repo_key = "k21rs002-ise"
 
@@ -94,7 +91,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
         {:ok, "Success"}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
         {:ok, {%{}, "mock_sha"}}
       end)
 
@@ -104,7 +101,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "returns error when repository type cannot be inferred" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
         {:ok,
          %{
            "owner" => %{"login" => "test-user"},
@@ -120,7 +117,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "returns error when student ID cannot be determined" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
         {:ok,
          %{
            "owner" => %{"login" => "unknown-user"},
@@ -135,7 +132,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "returns error when repository doesn't exist" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
         {:error, "Repository not found"}
       end)
 
@@ -145,7 +142,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "verbose mode logs inference details" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
         {:ok,
          %{
            "owner" => %{"login" => "taro-yamada"},
@@ -153,14 +150,14 @@ defmodule RegistryManager.RepositoryInferenceTest do
          }}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(
+      GitHubAPIMock.set_mock_response(
         :update_repositories_json,
         fn _new_data, _sha, _message ->
           {:ok, "Success"}
         end
       )
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
         {:ok, {%{}, "mock_sha"}}
       end)
 
@@ -170,7 +167,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
 
     test "verbose mode logs failure when GitHub owner not found in CSV" do
       # Setup mock responses
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
         {:ok,
          %{
            "owner" => %{"login" => "unknown-user"},
@@ -178,7 +175,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
          }}
       end)
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
         {:ok, {%{}, "mock_sha"}}
       end)
 
@@ -266,12 +263,12 @@ defmodule RegistryManager.RepositoryInferenceTest do
       Application.put_env(:registry_manager, :use_github_mock, true)
 
       # Reset mock responses for clean state
-      RegistryManager.Test.GitHubAPIMock.reset_mock_responses()
+      GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
         Application.delete_env(:registry_manager, :env)
         Application.delete_env(:registry_manager, :use_github_mock)
-        RegistryManager.Test.GitHubAPIMock.cleanup_mock()
+        GitHubAPIMock.cleanup_mock()
       end)
     end
 
@@ -281,8 +278,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
         "created_at" => "2025-01-01T00:00:00Z"
       }
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_actual_developer, fn repo_name,
-                                                                                     _opts ->
+      GitHubAPIMock.set_mock_response(:get_actual_developer, fn repo_name, _opts ->
         assert repo_name == "smkwlab/sampleuser-wr"
         {:ok, "k91rs012"}
       end)
@@ -309,8 +305,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
         "created_at" => "2025-01-01T00:00:00Z"
       }
 
-      RegistryManager.Test.GitHubAPIMock.set_mock_response(:get_actual_developer, fn _repo_name,
-                                                                                     _opts ->
+      GitHubAPIMock.set_mock_response(:get_actual_developer, fn _repo_name, _opts ->
         {:error, "No commits found"}
       end)
 

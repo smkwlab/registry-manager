@@ -2,6 +2,7 @@ defmodule RegistryManager.MultipleOwnersIntegrationTest do
   use ExUnit.Case, async: false
 
   alias RegistryManager.Commands.List
+  alias RegistryManager.Repository.Compatibility
 
   setup do
     # テスト用環境変数を設定
@@ -92,22 +93,18 @@ defmodule RegistryManager.MultipleOwnersIntegrationTest do
       array_username_data = %{"github_username" => ["user1", "user2"]}
 
       # 正規化テスト
-      assert RegistryManager.Repository.Compatibility.normalize_github_username("single-user") ==
+      assert Compatibility.normalize_github_username("single-user") ==
                ["single-user"]
 
-      assert RegistryManager.Repository.Compatibility.normalize_github_username([
+      assert Compatibility.normalize_github_username([
                "user1",
                "user2"
              ]) == ["user1", "user2"]
 
       # データ取得テスト
-      assert RegistryManager.Repository.Compatibility.get_all_github_usernames(
-               single_username_data
-             ) == ["single-user"]
+      assert Compatibility.get_all_github_usernames(single_username_data) == ["single-user"]
 
-      assert RegistryManager.Repository.Compatibility.get_all_github_usernames(
-               array_username_data
-             ) == ["user1", "user2"]
+      assert Compatibility.get_all_github_usernames(array_username_data) == ["user1", "user2"]
     end
   end
 end

@@ -21,7 +21,7 @@ defmodule RegistryManager.GitHubAPI do
     case Config.load_config().registry_repo do
       nil ->
         {:error,
-         "registry_repo is not configured. Set \"registry_repo\" (\"owner/repo\") in " <>
+         ~s|registry_repo is not configured. Set "registry_repo" ("owner/repo") in | <>
            "~/.config/registry-manager/config.yml or REGISTRY_MANAGER_REGISTRY_REPO."}
 
       repo ->
