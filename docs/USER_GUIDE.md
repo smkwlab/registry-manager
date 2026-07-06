@@ -441,14 +441,15 @@ echo $GITHUB_TOKEN
 
 **解決策:**
 ```bash
-# CSVファイルの存在確認（パスは csv_path / REGISTRY_MANAGER_CSV_PATH の設定値）
-ls -la "$REGISTRY_MANAGER_CSV_PATH"
+# 名簿 CSV のパスを解決（環境変数優先、なければ config.json の csv_path）
+CSV_PATH="${REGISTRY_MANAGER_CSV_PATH:-$(grep -oP '"csv_path"\s*:\s*"\K[^"]+' ~/.config/registry-manager/config.json 2>/dev/null)}"
 
-# CSVファイルの形式確認（UTF-8, カンマ区切り）
-head -5 "$REGISTRY_MANAGER_CSV_PATH"
-
-# 設定確認（config は JSON）
-grep csv_path ~/.config/registry-manager/config.json
+if [ -z "$CSV_PATH" ]; then
+  echo "csv_path が未設定です（氏名解決は無効。config.json か REGISTRY_MANAGER_CSV_PATH で設定してください）"
+else
+  ls -la "$CSV_PATH"    # 存在確認
+  head -5 "$CSV_PATH"   # 形式確認（UTF-8, カンマ区切り）
+fi
 ```
 
 #### 4. パフォーマンス問題
