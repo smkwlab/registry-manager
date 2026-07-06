@@ -442,7 +442,7 @@ echo $GITHUB_TOKEN
 **解決策:**
 ```bash
 # 名簿 CSV のパスを解決（環境変数優先、なければ config.json の csv_path）
-CSV_PATH="${REGISTRY_MANAGER_CSV_PATH:-$(grep -oP '"csv_path"\s*:\s*"\K[^"]+' ~/.config/registry-manager/config.json 2>/dev/null)}"
+CSV_PATH="${REGISTRY_MANAGER_CSV_PATH:-$(jq -r '.csv_path // empty' ~/.config/registry-manager/config.json 2>/dev/null)}"
 
 if [ -z "$CSV_PATH" ]; then
   echo "csv_path が未設定です（氏名解決は無効。config.json か REGISTRY_MANAGER_CSV_PATH で設定してください）"
