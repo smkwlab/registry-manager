@@ -156,6 +156,38 @@ defmodule RegistryManager.Commands.InferStudentIdTest do
     end
   end
 
+  describe "edge cases" do
+    setup do
+      Application.put_env(:registry_manager, :test_mode, true)
+
+      on_exit(fn ->
+        Application.delete_env(:registry_manager, :test_mode)
+      end)
+    end
+
+    test "treats an empty github_username as missing" do
+      test_repositories = %{
+        "empty-github-repo" => %{
+          "repository_type" => "wr",
+          "github_username" => "",
+          "created_at" => "2025-07-08T12:00:00Z"
+        }
+      }
+
+      test_params = [repositories: test_repositories, csv_data: []]
+
+      assert {:error, message} = InferStudentId.run(["empty-github-repo"], [], test_params)
+      assert message =~ "does not have github_username set"
+    end
+
+    test "loads repositories from the GitHub API mock when none are supplied" do
+      # :repositories を渡さないことで get_repositories の API 経路（モック）を通す。
+      # モックの k21rs002-wr は student_id を持つため、状態検証でエラーになる。
+      assert {:error, message} = InferStudentId.run(["k21rs002-wr"], [], csv_data: [])
+      assert message =~ "already has student_id"
+    end
+  end
+
   describe "parse_args/1" do
     test "parses valid repository name" do
       assert {:ok, {"91rs044-wr", []}} = InferStudentId.parse_args(["91rs044-wr"])

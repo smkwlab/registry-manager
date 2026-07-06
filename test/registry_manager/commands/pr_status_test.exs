@@ -289,6 +289,76 @@ defmodule RegistryManager.Commands.PrStatusTest do
       {:error, message} = PrStatus.run([], [], test_params)
       assert String.contains?(message, "API rate limit exceeded")
     end
+
+    test "filters by state=closed (closed/merged with no open PRs)" do
+      test_params = [
+        repositories: @test_repositories,
+        pr_data: @test_pr_data
+      ]
+
+      {:ok, output} = PrStatus.run([], [state: "closed"], test_params)
+
+      # k21rs003-ise: all 3 merged, 0 open → shown
+      assert String.contains?(output, "k21rs003-ise")
+      # k94gjk02-master: 1 merged, 0 open → shown
+      assert String.contains?(output, "k94gjk02-master")
+      # k21rs001-sotsuron: has 1 open → excluded
+      refute String.contains?(output, "k21rs001-sotsuron")
+      # k21rs002-wr: no PRs at all → excluded
+      refute String.contains?(output, "k21rs002-wr")
+    end
+  end
+
+  describe "sort with missing timestamps" do
+    @repos_no_ts %{
+      "b-repo" => %{"repository_type" => "wr"},
+      "a-repo" => %{"repository_type" => "wr"}
+    }
+
+    test "sort=updated falls back to epoch when updated_at is missing" do
+      pr_data = %{
+        "a-repo" => %{total: 1, open: 1, closed: 0, merged: 0, draft: 0, status: "Open"},
+        "b-repo" => %{total: 1, open: 1, closed: 0, merged: 0, draft: 0, status: "Open"}
+      }
+
+      test_params = [repositories: @repos_no_ts, pr_data: pr_data]
+
+      {:ok, output} = PrStatus.run([], [format: "csv", sort: "updated"], test_params)
+      assert String.contains?(output, "a-repo")
+      assert String.contains?(output, "b-repo")
+    end
+
+    test "sort=created falls back to epoch when created_at is missing" do
+      pr_data = %{
+        "a-repo" => %{total: 1, open: 1, closed: 0, merged: 0, draft: 0, status: "Open"},
+        "b-repo" => %{total: 1, open: 1, closed: 0, merged: 0, draft: 0, status: "Open"}
+      }
+
+      test_params = [repositories: @repos_no_ts, pr_data: pr_data]
+
+      {:ok, output} = PrStatus.run([], [format: "csv", sort: "created"], test_params)
+      assert String.contains?(output, "a-repo")
+      assert String.contains?(output, "b-repo")
+    end
+
+    test "sort=updated tolerates a non-string updated_at value" do
+      pr_data = %{
+        "a-repo" => %{
+          total: 1,
+          open: 1,
+          closed: 0,
+          merged: 0,
+          draft: 0,
+          status: "Open",
+          updated_at: 12_345
+        }
+      }
+
+      test_params = [repositories: %{"a-repo" => %{"repository_type" => "wr"}}, pr_data: pr_data]
+
+      {:ok, output} = PrStatus.run([], [format: "csv", sort: "updated"], test_params)
+      assert String.contains?(output, "a-repo")
+    end
   end
 
   describe "option validation" do

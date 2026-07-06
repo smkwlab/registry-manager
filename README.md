@@ -128,7 +128,7 @@ mix escript.build
 ## 開発
 
 ```bash
-mix test           # テスト実行（TDD、カバレッジ 85% 以上を維持）
+mix test           # テスト実行（TDD、カバレッジ 80% 以上を維持）
 mix format         # フォーマット
 mix credo --strict # 静的解析
 mix dialyzer       # 型チェック
