@@ -548,7 +548,9 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     pairs = build_branch_pairs(["main" | sorted_branches])
 
     # Merge through the chain; a failed pair invalidates everything above it,
-    # so halt there and report the remaining pairs as skipped
+    # so halt there and report the remaining pairs as skipped.
+    # アキュムレータ不変条件: 継続中は常に {:ok, counts}。失敗時は {:halt, {:error, failure}}
+    # で即停止するため {:error, _} が次の反復に渡ることはない（clause は {:ok, counts} 前提）。
     pairs
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, %{merged: 0, up_to_date: 0}}, fn {{lower, upper}, index},
@@ -734,46 +736,56 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   end
 
   defp merge_and_push(work_dir, lower, upper, verbose) do
-    # up-to-date 判定は merge 出力の文字列（git のバージョンや locale で表記が変わる）に
-    # 依存せず、ancestor 関係で事前に行う
-    if branch_up_to_date?(work_dir, lower) do
-      {:ok, :up_to_date}
-    else
-      case run_git_command(
-             ["merge", "origin/#{lower}", "-m", "Merge #{lower} to reconcile workflow history"],
-             work_dir
-           ) do
-        {:ok, _output} ->
-          push_merged_branch(work_dir, lower, upper, verbose)
+    # up-to-date 判定は merge 出力の文字列（git のバージョン/locale 依存）にも
+    # merge-base の失敗曖昧性にも頼らず、merge 前後の HEAD 変化で判定する:
+    # merge 成功かつ HEAD 不変 = 既に最新（no-op）、HEAD 変化 = 実際にマージされた
+    head_before = current_head(work_dir)
 
-        {:error, output} ->
-          log_merge_failure(lower, upper, output, verbose)
-          classify_merge_failure(work_dir, output)
-      end
+    case run_git_command(
+           ["merge", "origin/#{lower}", "-m", "Merge #{lower} to reconcile workflow history"],
+           work_dir
+         ) do
+      {:ok, _output} ->
+        if head_before != nil and current_head(work_dir) == head_before do
+          {:ok, :up_to_date}
+        else
+          push_merged_branch(work_dir, lower, upper, verbose)
+        end
+
+      {:error, output} ->
+        log_merge_failure(lower, upper, output, verbose)
+        classify_merge_failure(work_dir, output)
     end
   end
 
-  # checkout 済みの upper（HEAD）が origin/lower を既に含んでいるか（fast-forward 不要）
-  defp branch_up_to_date?(work_dir, lower) do
+  defp current_head(work_dir) do
+    case run_git_command(["rev-parse", "HEAD"], work_dir) do
+      {:ok, output} -> String.trim(output)
+      {:error, _} -> nil
+    end
+  end
+
+  # conflict かどうかは MERGE_HEAD の有無（確定的な plumbing シグナル）で判定する。
+  # merge 途中で残っていれば必ず abort し、作業ディレクトリを中途状態で残さない。
+  # unmerged_paths / conflict_types は表示用の best effort。
+  defp classify_merge_failure(work_dir, output) do
+    if merge_in_progress?(work_dir) do
+      # abort するとステージ情報が消えるため、先に unmerged パスを収集する
+      paths = unmerged_paths(work_dir)
+      abort_merge(work_dir)
+
+      {:error,
+       {:conflict, %{types: conflict_types(output), paths: paths, reason: String.trim(output)}}}
+    else
+      {:error, {:git, %{types: [], paths: [], reason: String.trim(output)}}}
+    end
+  end
+
+  defp merge_in_progress?(work_dir) do
     match?(
       {:ok, _},
-      run_git_command(["merge-base", "--is-ancestor", "origin/#{lower}", "HEAD"], work_dir)
+      run_git_command(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], work_dir)
     )
-  end
-
-  # conflict 判定も出力文字列ではなく unmerged パスの有無（plumbing、locale 非依存）で行う。
-  # conflict_types は表示用の best effort（locale 次第で空になり得る）
-  defp classify_merge_failure(work_dir, output) do
-    case unmerged_paths(work_dir) do
-      [] ->
-        {:error, {:git, %{types: [], paths: [], reason: String.trim(output)}}}
-
-      paths ->
-        abort_merge(work_dir)
-
-        {:error,
-         {:conflict, %{types: conflict_types(output), paths: paths, reason: String.trim(output)}}}
-    end
   end
 
   # merge --abort の失敗を握りつぶさず記録する（作業ディレクトリが中途状態で残る兆候）
@@ -945,7 +957,8 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     "Git operation failed: #{failure.reason}"
   end
 
-  defp failure_header(%{kind: :git} = failure) do
+  # ガードで lower != nil を明示し、上の nil 節との排他性を節順に依存させない
+  defp failure_header(%{kind: :git, lower: lower} = failure) when not is_nil(lower) do
     "Git operation failed while merging #{failure.lower} into #{failure.upper}: " <>
       failure.reason
   end
