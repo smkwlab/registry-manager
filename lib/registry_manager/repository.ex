@@ -767,13 +767,13 @@ defmodule RegistryManager.Repository do
   end
 
   defp parse_csv_line_for_username(line, target_username) do
-    # Skip empty lines
-    return_if_empty_line(line) ||
+    # 空行はスキップ（従来の return_if_empty_line は常に nil を返し
+    # 短絡が機能していなかった — Elixir 1.20 の型チェッカが検出）
+    if String.trim(line) == "" do
+      nil
+    else
       parse_csv_parts_for_username(String.split(line, ","), target_username)
-  end
-
-  defp return_if_empty_line(line) do
-    if String.trim(line) == "", do: nil
+    end
   end
 
   defp parse_csv_parts_for_username(parts, target_username) when length(parts) >= 8 do
