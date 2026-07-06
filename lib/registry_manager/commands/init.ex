@@ -261,9 +261,10 @@ defmodule RegistryManager.Commands.Init do
   end
 
   # 安全な文字集合（org 名・repo 名・学籍番号などが該当）はクォートせず
-  # 素の YAML スカラーで書き、それ以外は inspect のダブルクォートで安全側に倒す
+  # 素の YAML スカラーで書き、それ以外は inspect のダブルクォートで安全側に倒す。
+  # YAML の予約語や数値に見える文字列は素で書くと型が変わるため必ずクォートする
   defp yaml_scalar(value) when is_binary(value) do
-    if value =~ ~r/\A[A-Za-z0-9_.\/-]+\z/ do
+    if plain_yaml_safe?(value) do
       value
     else
       inspect(value)
@@ -271,6 +272,14 @@ defmodule RegistryManager.Commands.Init do
   end
 
   defp yaml_scalar(value), do: to_string(value)
+
+  @yaml_reserved ~w(true false yes no on off null ~ True False Yes No On Off Null NULL TRUE FALSE)
+
+  defp plain_yaml_safe?(value) do
+    value =~ ~r/\A[A-Za-z0-9_.\/-]+\z/ and
+      value not in @yaml_reserved and
+      not (value =~ ~r/\A[0-9.-]+\z/)
+  end
 
   # --- 仕上げ ---
 

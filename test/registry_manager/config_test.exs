@@ -386,14 +386,22 @@ defmodule RegistryManager.ConfigTest do
     end
 
     test "works with default config file path when file doesn't exist" do
-      non_existent_file = Path.join(System.tmp_dir!(), "non_existent.json")
+      non_existent_file = Path.join(System.tmp_dir!(), "non_existent.yml")
       config = Config.load_config(non_existent_file)
 
-      # デフォルト値が返される（csv_path は実行環境に規約ファイル
-      # ~/.config/smkwlab/students.csv があればそれ、無ければ nil）
-      assert config.csv_path in [nil, Config.conventional_csv_path("smkwlab")]
       assert config.registry_repo == nil
       assert config.github_org == "smkwlab"
+    end
+
+    test "csv_path defaults to nil when no CSV is configured" do
+      # github_org を実在しない org にして、実行環境の規約ファイルに依存しない
+      path = Path.join(System.tmp_dir!(), "rm-detcsv-#{System.unique_integer([:positive])}.yml")
+      File.write!(path, "github_org: no-such-org-#{System.unique_integer([:positive])}\n")
+      on_exit(fn -> File.rm(path) end)
+
+      config = Config.load_config(path)
+
+      assert config.csv_path == nil
     end
   end
 
