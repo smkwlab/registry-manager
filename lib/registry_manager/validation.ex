@@ -187,17 +187,25 @@ defmodule RegistryManager.Validation do
       :ok
 
       iex> RegistryManager.Validation.validate_repository_type("invalid")
-      {:error, "不正なリポジトリタイプ: invalid (valid: sotsuron, master, wr, ise, ise-report, other)"}
+      {:error, "不正なリポジトリタイプ: invalid (valid: sotsuron, master, wr, ise, ise-report, latex, other)"}
   """
   def validate_repository_type(repo_type) do
-    # Issue #388: Added master and other types
-    # Removed "latex" and "thesis" - these patterns now map to "other" via inference
-    valid_types = ["sotsuron", "master", "wr", "ise", "ise-report", "other"]
+    # Issue #388 で master/other を追加。Issue #11（TMT#471 の語彙確定）で latex を
+    # 正式語彙に追加: latex-template 派生（研究会等）は branch 追跡対象の独立タイプ。
+    # thesis は repo 名 suffix・文書種別・フィルタ名のレイヤの語であり type ではない
+    valid_types = ["sotsuron", "master", "wr", "ise", "ise-report", "latex", "other"]
 
-    if repo_type in valid_types do
-      :ok
-    else
-      {:error, "不正なリポジトリタイプ: #{repo_type} (valid: #{Enum.join(valid_types, ", ")})"}
+    cond do
+      repo_type in valid_types ->
+        :ok
+
+      repo_type == "thesis" ->
+        {:error,
+         "不正なリポジトリタイプ: thesis は repository_type ではありません" <>
+           "（修論は master、latex-template 派生は latex を使用。valid: #{Enum.join(valid_types, ", ")}）"}
+
+      true ->
+        {:error, "不正なリポジトリタイプ: #{repo_type} (valid: #{Enum.join(valid_types, ", ")})"}
     end
   end
 

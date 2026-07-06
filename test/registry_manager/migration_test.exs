@@ -43,6 +43,18 @@ defmodule RegistryManager.MigrationTest do
   end
 
   describe "single entry migration" do
+    test "normalizes legacy thesis type by repository name (issue #11)" do
+      base = %{"student_id" => "k26gjk09", "repository_type" => "thesis"}
+
+      {:ok, m1} = Migration.migrate_single_entry("k26gjk09-fit2026", base)
+      assert m1["repository_type"] == "latex"
+
+      {:ok, m2} =
+        Migration.migrate_single_entry("k24gjk04-master", %{base | "student_id" => "k24gjk04"})
+
+      assert m2["repository_type"] == "master"
+    end
+
     test "migrates v1 entry with all fields" do
       v1_entry = %{
         "student_id" => "k19rs999",

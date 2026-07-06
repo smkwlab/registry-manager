@@ -22,7 +22,7 @@ defmodule RegistryManager.Commands.PrStatus do
 
   @valid_formats ["table", "csv", "json"]
   # Issue #111: Added master and other types
-  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "other"]
+  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
   @valid_states ["open", "closed", "all"]
   @valid_sort_options ["repository", "updated", "created"]
 

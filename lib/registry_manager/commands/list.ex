@@ -29,7 +29,7 @@ defmodule RegistryManager.Commands.List do
   require Logger
 
   @valid_formats ["table", "csv", "json"]
-  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "other"]
+  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
 
   @doc """
   Runs the list command with given arguments and options.
