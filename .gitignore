@@ -24,3 +24,8 @@ registry_manager-*.tar
 
 # Escript executable (build artifact)
 registry-manager
+
+# Roster CSV holds student names (personal info); keep it local-only.
+# Never commit it here or to the registry (see README privacy section).
+*.csv
+!test/fixtures/*.csv

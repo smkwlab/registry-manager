@@ -68,8 +68,8 @@ config :registry_manager,
   # キャッシュ設定
   cache_ttl: 300,  # 5分
   
-  # 学生データCSVファイル
-  csv_file_path: "smkwlab.csv"
+  # 名簿 CSV（任意。氏名解決用。未設定なら氏名解決なし）
+  csv_path: "/path/to/students.csv"
 ```
 
 #### 2. 環境変数の設定
@@ -441,14 +441,16 @@ echo $GITHUB_TOKEN
 
 **解決策:**
 ```bash
-# CSVファイルの存在確認
-ls -la smkwlab.csv
+# 1. 名簿 CSV のパスを確認する
+#    （config.json の csv_path、または環境変数 REGISTRY_MANAGER_CSV_PATH。
+#     どちらも未設定なら氏名解決は無効 = 名前が Unknown になる原因）
+cat ~/.config/registry-manager/config.json
+echo "REGISTRY_MANAGER_CSV_PATH=$REGISTRY_MANAGER_CSV_PATH"
 
-# CSVファイルの形式確認（UTF-8, カンマ区切り）
-head -5 smkwlab.csv
-
-# 設定確認
-grep csv_file_path config/config.exs
+# 2. 確認したパスを代入して検査する
+csv=/path/to/students.csv    # ← 上で確認した実際のパスに置き換える
+ls -la "$csv"     # 存在確認
+head -5 "$csv"    # 形式確認（UTF-8, カンマ区切り）
 ```
 
 #### 4. パフォーマンス問題
