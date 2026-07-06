@@ -4,7 +4,7 @@
 リポジトリレジストリ管理ツール（Elixir escript）。
 
 GitHub 上のレジストリデータリポジトリに置いた `data/registry.json`
-（旧名 `data/repositories.json` も移行期間中は自動で読み書き）を GitHub API
+を GitHub API
 経由で安全に読み書きし、リポジトリの登録・更新・ブランチ保護状況の管理・
 一覧表示・ワークフロー伝播などを行います。
 
@@ -72,7 +72,7 @@ registry_repo: your-org/your-student-registry
 | キー | 必須 | 説明 |
 |---|---|---|
 | `github_org` | 推奨 | 学生リポジトリが属する GitHub Organization |
-| `registry_repo` | GitHub データ操作時に必須 | `owner/repo` 形式のレジストリデータリポジトリ（旧キー `data_repo` も当面は警告付きで受理） |
+| `registry_repo` | GitHub データ操作時に必須 | `owner/repo` 形式のレジストリデータリポジトリ |
 | `csv_path` | 任意 | 学生名簿 CSV（氏名解決用）。未設定時は規約パス `~/.config/<github_org>/students.csv` が存在すればそれを使い、無ければ氏名解決なしで動作 |
 | `test_student_ids` | 任意 | 本番データ保護チェックでテストデータ扱いする学生 ID |
 

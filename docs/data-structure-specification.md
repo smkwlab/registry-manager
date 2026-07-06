@@ -13,7 +13,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 
 ### 1.1 新データ構造（推奨）
 
-**ファイル**: `data/repositories.json`
+**ファイル**: `data/registry.json`
 
 ```json
 {

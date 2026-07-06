@@ -12,9 +12,9 @@ defmodule RegistryManager.GitHubAPI do
 
   require Logger
 
+  # レジストリファイルは data/registry.json に固定
+  # （旧名 repositories.json の互換は持たない — 公開前に後方互換を全廃、issue #21）
   @registry_file_path "data/registry.json"
-  # 旧ファイル名（repositories.json → registry.json 改名の移行期間中のみ、issue #8）
-  @legacy_registry_file_path "data/repositories.json"
 
   # レジストリデータリポジトリは設定必須（Config.registry_repo）
   defp registry_repo do
@@ -22,48 +22,10 @@ defmodule RegistryManager.GitHubAPI do
       nil ->
         {:error,
          "registry_repo is not configured. Set \"registry_repo\" (\"owner/repo\") in " <>
-           "~/.config/registry-manager/config.json or REGISTRY_MANAGER_REGISTRY_REPO."}
+           "~/.config/registry-manager/config.yml or REGISTRY_MANAGER_REGISTRY_REPO."}
 
       repo ->
         {:ok, repo}
-    end
-  end
-
-  @doc false
-  # レジストリファイルを取得: registry.json を優先し、404 の場合のみ旧名へ fallback
-  def fetch_registry_file(fetch_fn) do
-    case fetch_fn.(@registry_file_path) do
-      {:ok, response} ->
-        {:ok, response}
-
-      {:error, message} = error ->
-        if Client.not_found_error?(message) do
-          fetch_fn.(@legacy_registry_file_path)
-        else
-          error
-        end
-    end
-  end
-
-  @doc false
-  # 書き込み先パスを解決: 存在する方へ書く（両方無ければ新名で作成）。
-  # get で読んだ sha と同じファイルに書くため、解決規則は fetch と一致させる
-  def resolve_registry_write_path(fetch_fn) do
-    case fetch_fn.(@registry_file_path) do
-      {:ok, _} ->
-        {:ok, @registry_file_path}
-
-      {:error, message} = error ->
-        cond do
-          not Client.not_found_error?(message) ->
-            error
-
-          match?({:ok, _}, fetch_fn.(@legacy_registry_file_path)) ->
-            {:ok, @legacy_registry_file_path}
-
-          true ->
-            {:ok, @registry_file_path}
-        end
     end
   end
 
@@ -193,7 +155,7 @@ defmodule RegistryManager.GitHubAPI do
 
   defp get_repositories_json_impl do
     with {:ok, repo} <- registry_repo(),
-         {:ok, response} <- fetch_registry_file(&Client.get_file_contents(repo, &1)),
+         {:ok, response} <- Client.get_file_contents(repo, @registry_file_path),
          {:ok, {data, sha}} <- Parser.decode_file_response(response) do
       # データ読み込み時に正規化を適用
       normalized_data = Compatibility.normalize_repositories(data)
@@ -203,12 +165,11 @@ defmodule RegistryManager.GitHubAPI do
 
   defp update_repositories_json_impl(new_data, current_sha, commit_message) do
     with {:ok, repo} <- registry_repo(),
-         {:ok, write_path} <- resolve_registry_write_path(&Client.get_file_contents(repo, &1)),
          {:ok, encoded_content} <- Parser.encode_file_content(new_data),
          {:ok, _response} <-
            Client.update_file_contents(
              repo,
-             write_path,
+             @registry_file_path,
              encoded_content,
              current_sha,
              commit_message

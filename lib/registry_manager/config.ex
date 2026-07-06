@@ -73,8 +73,7 @@ defmodule RegistryManager.Config do
             optional(:enabled) => boolean(),
             optional(:ttl_hours) => integer()
           },
-          optional(:csv_path | :github_org | :registry_repo | :data_repo | :log_level) =>
-            String.t(),
+          optional(:csv_path | :github_org | :registry_repo | :log_level) => String.t(),
           optional(:test_student_ids) => [String.t()]
         }
   def load_env_config do
@@ -82,7 +81,6 @@ defmodule RegistryManager.Config do
     |> put_if_env(:csv_path, "REGISTRY_MANAGER_CSV_PATH")
     |> put_if_env(:github_org, "REGISTRY_MANAGER_GITHUB_ORG")
     |> put_if_env(:registry_repo, "REGISTRY_MANAGER_REGISTRY_REPO")
-    |> put_if_env(:data_repo, "REGISTRY_MANAGER_DATA_REPO")
     |> put_test_student_ids_env()
     |> put_if_env(:log_level, "REGISTRY_MANAGER_LOG_LEVEL")
     |> put_cache_env()
@@ -202,13 +200,8 @@ defmodule RegistryManager.Config do
   def load_config(config_file_path \\ get_default_config_path()) do
     default_config = default_config()
 
-    env_config =
-      load_env_config()
-      |> migrate_legacy_registry_key("environment variable REGISTRY_MANAGER_DATA_REPO")
-
-    user_config =
-      load_user_config(config_file_path)
-      |> migrate_legacy_registry_key(config_file_path)
+    env_config = load_env_config()
+    user_config = load_user_config(config_file_path)
 
     merge_configs([default_config, env_config, user_config])
     |> apply_csv_convention()
@@ -250,37 +243,6 @@ defmodule RegistryManager.Config do
   def conventional_csv_path(github_org, home \\ System.user_home!())
       when is_binary(github_org) and is_binary(home) do
     Path.join([home, ".config", github_org, "students.csv"])
-  end
-
-  # 旧キー data_repo を registry_repo へ移行（1 世代の後方互換、issue #8）
-  defp migrate_legacy_registry_key(config, source) when is_map(config) do
-    legacy = Map.get(config, :data_repo) || Map.get(config, "data_repo")
-    new = Map.get(config, :registry_repo) || Map.get(config, "registry_repo")
-
-    cond do
-      is_nil(legacy) ->
-        config
-
-      is_nil(new) ->
-        IO.puts(
-          :stderr,
-          "warning: config key \"data_repo\" is deprecated, " <>
-            "rename it to \"registry_repo\" (#{source})"
-        )
-
-        config
-        |> Map.drop([:data_repo, "data_repo"])
-        |> Map.put(:registry_repo, legacy)
-
-      true ->
-        IO.puts(
-          :stderr,
-          "warning: config key \"data_repo\" is ignored because " <>
-            "\"registry_repo\" is set (#{source})"
-        )
-
-        Map.drop(config, [:data_repo, "data_repo"])
-    end
   end
 
   @doc """

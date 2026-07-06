@@ -60,7 +60,7 @@ registry_repo: your-org/thesis-student-registry
 | 項目 | デフォルト値 | 説明 |
 |------|-------------|------|
 | `github_org` | `"smkwlab"` | 学生リポジトリが属する GitHub Organization |
-| `registry_repo` | `nil` | `owner/repo` 形式のレジストリデータリポジトリ。**writer の書き込み先のため規約導出せず明示必須**（旧キー `data_repo` は 1 世代 fallback） |
+| `registry_repo` | `nil` | `owner/repo` 形式のレジストリデータリポジトリ。**writer の書き込み先のため規約導出せず明示必須** |
 | `csv_path` | `nil` | 任意。氏名解決用のローカル名簿 CSV。未設定時は規約パス `~/.config/<github_org>/students.csv` が存在すればそれを使い、無ければ氏名解決なしで動作（thesis-monitor も同じ規約パスを参照） |
 | `test_student_ids` | `[]` | 本番データ保護チェックでテストデータ扱いする学生 ID |
 | `cache.enabled` | `true` | キャッシュの有効化 |
@@ -71,8 +71,7 @@ registry_repo: your-org/thesis-student-registry
 | `log_level` | `"info"` | ログレベル（debug / info / warn / error） |
 
 レジストリデータファイルのパスはリポジトリ内で `data/registry.json` に固定です
-（旧名 `data/repositories.json` は移行期間中のみ fallback。
-[データ構造仕様書](data-structure-specification.md) 参照）。
+（[データ構造仕様書](data-structure-specification.md) 参照）。
 
 ## 環境変数
 
