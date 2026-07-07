@@ -57,8 +57,12 @@ defmodule RegistryManager.Commands.EditTest do
 
     # テスト終了時のクリーンアップ
     on_exit(fn ->
-      if Process.alive?(agent) do
+      # Process.alive? チェックだけでは TOCTOU レースが残る（リンクされた agent が
+      # チェック通過後・stop 実行前に終了し得る）。stop の :exit を捕捉して吸収する。
+      try do
         Agent.stop(agent)
+      catch
+        :exit, _ -> :ok
       end
 
       # モックをクリア
