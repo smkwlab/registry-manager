@@ -186,7 +186,65 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
       {:ok, result} =
         PropagateWorkflow.process_single_repository("test-repo", [dry_run: false], test_params)
 
-      assert {:propagated, 1} = result
+      assert {:propagated, %{merged: 1, up_to_date: 0}} = result
+    end
+
+    test "propagates a repository failure through run/3 with non-ok result" do
+      test_params = [
+        branches: %{"test-repo" => ["0th-draft", "1st-draft"]},
+        compare_results: %{"test-repo" => [{"main", "0th-draft", 1}]},
+        mock_git: {:error, "Merge conflict while merging main into 0th-draft"}
+      ]
+
+      assert {:error, output} =
+               PropagateWorkflow.run(["test-repo"], [dry_run: false], test_params)
+
+      assert output =~ "❌ test-repo: Error - Merge conflict while merging main into 0th-draft"
+    end
+  end
+
+  describe "format_propagation_failure/1" do
+    test "formats a conflict failure with branches, types, paths, progress, and skipped pairs" do
+      failure = %{
+        kind: :conflict,
+        lower: "2nd-draft",
+        upper: "3rd-draft",
+        types: ["modify/delete"],
+        paths: [".github/workflows/ai-reviewer.yml"],
+        reason: "CONFLICT (modify/delete): ...",
+        merged: 2,
+        up_to_date: 1,
+        skipped: [{"3rd-draft", "4th-draft"}, {"4th-draft", "5th-draft"}]
+      }
+
+      message = PropagateWorkflow.format_propagation_failure(failure)
+
+      assert message =~ "Merge conflict (modify/delete) while merging 2nd-draft into 3rd-draft"
+      assert message =~ ".github/workflows/ai-reviewer.yml"
+      assert message =~ "merged 2 branch(es), 1 already up-to-date"
+      assert message =~ "3rd-draft → 4th-draft"
+      assert message =~ "4th-draft → 5th-draft"
+      assert message =~ "Resolve the conflict manually"
+    end
+
+    test "formats a non-conflict git failure" do
+      failure = %{
+        kind: :git,
+        lower: "main",
+        upper: "0th-draft",
+        types: [],
+        paths: [],
+        reason: "fatal: unable to access remote",
+        merged: 0,
+        up_to_date: 0,
+        skipped: []
+      }
+
+      message = PropagateWorkflow.format_propagation_failure(failure)
+
+      assert message =~ "Git operation failed while merging main into 0th-draft"
+      assert message =~ "fatal: unable to access remote"
+      refute message =~ "Resolve the conflict manually"
     end
   end
 
@@ -206,11 +264,11 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
       assert output =~ "0th-draft is missing 2 commits from main"
     end
 
-    test "formats propagated result" do
-      results = [{"test-repo", {:ok, {:propagated, 2}}}]
+    test "formats propagated result distinguishing merged from up-to-date" do
+      results = [{"test-repo", {:ok, {:propagated, %{merged: 2, up_to_date: 1}}}}]
       output = PropagateWorkflow.format_results(results, dry_run: false)
 
-      assert output =~ "✅ test-repo: Propagated 2 branch(es)"
+      assert output =~ "✅ test-repo: Merged 2 branch(es), 1 already up-to-date"
     end
 
     test "formats error result" do
@@ -344,7 +402,9 @@ defmodule RegistryManager.Commands.PropagateWorkflowTest do
 
     test "formats applied_and_propagated result" do
       results = [
-        {"test-repo", {:ok, {:applied_and_propagated, %{template_files: 1, branches: 2}}}}
+        {"test-repo",
+         {:ok,
+          {:applied_and_propagated, %{template_files: 1, branches: %{merged: 2, up_to_date: 0}}}}}
       ]
 
       output = PropagateWorkflow.format_results(results, dry_run: false, from_template: true)

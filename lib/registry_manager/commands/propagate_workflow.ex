@@ -48,7 +48,19 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     with {:ok, validated_opts} <- validate_options(opts),
          {:ok, repositories} <- get_target_repositories(args, validated_opts, test_params),
          {:ok, results} <- process_repositories(repositories, validated_opts, test_params) do
-      {:ok, format_results(results, validated_opts)}
+      finalize_results(results, validated_opts)
+    end
+  end
+
+  # いずれかのリポジトリで伝播が失敗していたら exit code を非ゼロにするため
+  # {:error, _} で返す（出力には全リポジトリの結果を含む）
+  defp finalize_results(results, opts) do
+    output = format_results(results, opts)
+
+    if Enum.any?(results, fn {_repo, result} -> match?({:error, _}, result) end) do
+      {:error, output}
+    else
+      {:ok, output}
     end
   end
 
@@ -310,7 +322,10 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
       # Test mode
       {:ok,
        {:applied_and_propagated,
-        %{template_files: length(template_updates), branches: length(branch_issues)}}}
+        %{
+          template_files: length(template_updates),
+          branches: %{merged: length(branch_issues), up_to_date: 0}
+        }}}
     else
       apply_template_and_propagate_with_git(repo_name, template_updates, branch_issues, opts)
     end
@@ -348,10 +363,16 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
 
           # Step 2: Propagate through ALL draft branches in sequence
           # This ensures changes flow through the entire branch hierarchy
-          branch_count = propagate_through_all_branches(work_dir, opts)
+          case propagate_through_all_branches(work_dir, opts) do
+            {:ok, summary} ->
+              {:ok,
+               {:applied_and_propagated, %{template_files: template_count, branches: summary}}}
 
-          {:ok,
-           {:applied_and_propagated, %{template_files: template_count, branches: branch_count}}}
+            {:error, failure} ->
+              {:error,
+               "Applied #{template_count} template file(s), but propagation failed: " <>
+                 format_propagation_failure(failure)}
+          end
 
         {:error, reason} ->
           {:error, "Failed to clone: #{reason}"}
@@ -453,7 +474,9 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   end
 
   # @doc false: テスト用に公開（ローカル git リポジトリでマージ連鎖を検証するため）。
-  # 挙動は変更していない。
+  # 戻り値: {:ok, %{merged:, up_to_date:}} | {:error, failure}
+  # failure は kind（:conflict | :git）・lower/upper・types・paths・reason・
+  # merged/up_to_date（失敗までの集計）・skipped（未処理 pair）を持つ。
   @doc false
   def propagate_through_all_branches(work_dir, opts) do
     verbose = opts[:verbose]
@@ -473,7 +496,18 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
           Logger.warning("⚠️ Failed to list branches: #{reason}")
         end
 
-        0
+        {:error,
+         %{
+           kind: :git,
+           lower: nil,
+           upper: nil,
+           types: [],
+           paths: [],
+           reason: "Failed to list branches: #{String.trim(reason)}",
+           merged: 0,
+           up_to_date: 0,
+           skipped: []
+         }}
     end
   end
 
@@ -507,31 +541,41 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     sorted_branches
   end
 
+  defp merge_through_draft_chain([], _work_dir, _opts), do: {:ok, %{merged: 0, up_to_date: 0}}
+
   defp merge_through_draft_chain(sorted_branches, work_dir, opts) do
-    if Enum.empty?(sorted_branches) do
-      0
-    else
-      # Build branch pairs: main → 0th, 0th → 1st, 1st → 2nd, ...
-      pairs = build_branch_pairs(["main" | sorted_branches])
+    # Build branch pairs: main → 0th, 0th → 1st, 1st → 2nd, ...
+    pairs = build_branch_pairs(["main" | sorted_branches])
 
-      # Merge through the chain
-      results =
-        Enum.map(pairs, fn {lower, upper} ->
-          merge_branch_pair(work_dir, lower, upper, opts)
-        end)
+    # Merge through the chain; a failed pair invalidates everything above it,
+    # so halt there and report the remaining pairs as skipped.
+    # アキュムレータ不変条件: 継続中は常に {:ok, counts}。失敗時は {:halt, {:error, failure}}
+    # で即停止するため {:error, _} が次の反復に渡ることはない（clause は {:ok, counts} 前提）。
+    pairs
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, %{merged: 0, up_to_date: 0}}, fn {{lower, upper}, index},
+                                                                {:ok, counts} ->
+      case merge_branch(work_dir, lower, upper, opts) do
+        {:ok, :merged} ->
+          {:cont, {:ok, %{counts | merged: counts.merged + 1}}}
 
-      Enum.count(results, fn r -> r == :ok end)
-    end
-  end
+        {:ok, :up_to_date} ->
+          {:cont, {:ok, %{counts | up_to_date: counts.up_to_date + 1}}}
 
-  defp merge_branch_pair(work_dir, lower, upper, opts) do
-    result = merge_branch(work_dir, lower, upper, opts)
+        {:error, {kind, details}} ->
+          failure =
+            counts
+            |> Map.merge(details)
+            |> Map.merge(%{
+              kind: kind,
+              lower: lower,
+              upper: upper,
+              skipped: Enum.drop(pairs, index + 1)
+            })
 
-    if opts[:verbose] and result == :ok do
-      Logger.info("✅ Merged #{lower} into #{upper}")
-    end
-
-    result
+          {:halt, {:error, failure}}
+      end
+    end)
   end
 
   @doc """
@@ -636,11 +680,17 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
   Propagate changes by merging lower branches into upper branches
   """
   def propagate_changes(repo_name, issues, opts, test_params) do
-    if Keyword.has_key?(test_params, :mock_git) do
+    case Keyword.fetch(test_params, :mock_git) do
+      # Test mode: simulate a propagation failure
+      {:ok, {:error, _reason} = error} ->
+        error
+
       # Test mode: return success without actual git operations
-      {:ok, {:propagated, length(issues)}}
-    else
-      propagate_changes_with_git(repo_name, issues, opts)
+      {:ok, _} ->
+        {:ok, {:propagated, %{merged: length(issues), up_to_date: 0}}}
+
+      :error ->
+        propagate_changes_with_git(repo_name, issues, opts)
     end
   end
 
@@ -658,8 +708,10 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
         {:ok, _} ->
           # Propagate through ALL draft branches in sequence
           # This ensures changes flow through the entire branch hierarchy
-          success_count = propagate_through_all_branches(work_dir, opts)
-          {:ok, {:propagated, success_count}}
+          case propagate_through_all_branches(work_dir, opts) do
+            {:ok, summary} -> {:ok, {:propagated, summary}}
+            {:error, failure} -> {:error, format_propagation_failure(failure)}
+          end
 
         {:error, reason} ->
           {:error, "Failed to clone: #{reason}"}
@@ -674,25 +726,112 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     verbose = opts[:verbose]
 
     with {:ok, _} <- run_git_command(["checkout", upper], work_dir),
-         {:ok, _} <- run_git_command(["fetch", "origin", lower], work_dir),
-         {:ok, _} <-
-           run_git_command(
-             ["merge", "origin/#{lower}", "-m", "Merge #{lower} to reconcile workflow history"],
-             work_dir
-           ),
-         {:ok, _} <- run_git_command(["push"], work_dir) do
-      if verbose do
-        Logger.info("✅ Merged #{lower} into #{upper}")
-      end
-
-      :ok
+         {:ok, _} <- run_git_command(["fetch", "origin", lower], work_dir) do
+      merge_and_push(work_dir, lower, upper, verbose)
     else
       {:error, reason} ->
-        if verbose do
-          Logger.warning("❌ Failed to merge #{lower} into #{upper}: #{reason}")
+        log_merge_failure(lower, upper, reason, verbose)
+        {:error, {:git, %{types: [], paths: [], reason: String.trim(reason)}}}
+    end
+  end
+
+  defp merge_and_push(work_dir, lower, upper, verbose) do
+    # up-to-date 判定は merge 出力の文字列（git のバージョン/locale 依存）にも
+    # merge-base の失敗曖昧性にも頼らず、merge 前後の HEAD 変化で判定する:
+    # merge 成功かつ HEAD 不変 = 既に最新（no-op）、HEAD 変化 = 実際にマージされた
+    head_before = current_head(work_dir)
+
+    case run_git_command(
+           ["merge", "origin/#{lower}", "-m", "Merge #{lower} to reconcile workflow history"],
+           work_dir
+         ) do
+      {:ok, _output} ->
+        if head_before != nil and current_head(work_dir) == head_before do
+          {:ok, :up_to_date}
+        else
+          push_merged_branch(work_dir, lower, upper, verbose)
         end
 
-        {:error, reason}
+      {:error, output} ->
+        log_merge_failure(lower, upper, output, verbose)
+        classify_merge_failure(work_dir, output)
+    end
+  end
+
+  defp current_head(work_dir) do
+    case run_git_command(["rev-parse", "HEAD"], work_dir) do
+      {:ok, output} -> String.trim(output)
+      {:error, _} -> nil
+    end
+  end
+
+  # conflict かどうかは MERGE_HEAD の有無（確定的な plumbing シグナル）で判定する。
+  # merge 途中で残っていれば必ず abort し、作業ディレクトリを中途状態で残さない。
+  # unmerged_paths / conflict_types は表示用の best effort。
+  defp classify_merge_failure(work_dir, output) do
+    if merge_in_progress?(work_dir) do
+      # abort するとステージ情報が消えるため、先に unmerged パスを収集する
+      paths = unmerged_paths(work_dir)
+      abort_merge(work_dir)
+
+      {:error,
+       {:conflict, %{types: conflict_types(output), paths: paths, reason: String.trim(output)}}}
+    else
+      {:error, {:git, %{types: [], paths: [], reason: String.trim(output)}}}
+    end
+  end
+
+  defp merge_in_progress?(work_dir) do
+    match?(
+      {:ok, _},
+      run_git_command(["rev-parse", "--verify", "--quiet", "MERGE_HEAD"], work_dir)
+    )
+  end
+
+  # merge --abort の失敗を握りつぶさず記録する（作業ディレクトリが中途状態で残る兆候）
+  defp abort_merge(work_dir) do
+    case run_git_command(["merge", "--abort"], work_dir) do
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("⚠️ merge --abort failed in #{work_dir}: #{String.trim(reason)}")
+    end
+  end
+
+  defp push_merged_branch(work_dir, lower, upper, verbose) do
+    case run_git_command(["push"], work_dir) do
+      {:ok, _} ->
+        if verbose do
+          Logger.info("✅ Merged #{lower} into #{upper}")
+        end
+
+        {:ok, :merged}
+
+      {:error, reason} ->
+        log_merge_failure(lower, upper, reason, verbose)
+        {:error, {:git, %{types: [], paths: [], reason: String.trim(reason)}}}
+    end
+  end
+
+  defp log_merge_failure(lower, upper, reason, verbose) do
+    if verbose do
+      Logger.warning("❌ Failed to merge #{lower} into #{upper}: #{reason}")
+    end
+  end
+
+  # merge 出力の "CONFLICT (modify/delete): ..." 等から種別を抽出する
+  defp conflict_types(output) do
+    ~r/CONFLICT \(([^)]+)\)/
+    |> Regex.scan(output)
+    |> Enum.map(fn [_, type] -> type end)
+    |> Enum.uniq()
+  end
+
+  defp unmerged_paths(work_dir) do
+    case run_git_command(["diff", "--name-only", "--diff-filter=U"], work_dir) do
+      {:ok, output} -> output |> String.split("\n", trim: true) |> Enum.sort()
+      {:error, _} -> []
     end
   end
 
@@ -770,19 +909,78 @@ defmodule RegistryManager.Commands.PropagateWorkflow do
     "📋 #{repo_name}:\n" <> Enum.join(lines, "\n")
   end
 
-  defp format_single_result(repo_name, {:ok, {:propagated, count}}, _dry_run) do
-    "✅ #{repo_name}: Propagated #{count} branch(es)"
+  defp format_single_result(repo_name, {:ok, {:propagated, summary}}, _dry_run) do
+    "✅ #{repo_name}: #{format_branch_summary(summary)}"
   end
 
   defp format_single_result(
          repo_name,
-         {:ok, {:applied_and_propagated, %{template_files: files, branches: branches}}},
+         {:ok, {:applied_and_propagated, %{template_files: files, branches: summary}}},
          _dry_run
        ) do
-    "✅ #{repo_name}: Applied #{files} file(s), propagated to #{branches} branch(es)"
+    "✅ #{repo_name}: Applied #{files} file(s), #{format_branch_summary(summary)}"
   end
 
   defp format_single_result(repo_name, {:error, reason}, _dry_run) do
     "❌ #{repo_name}: Error - #{reason}"
   end
+
+  defp format_branch_summary(%{merged: merged, up_to_date: up_to_date}) do
+    "Merged #{merged} branch(es), #{up_to_date} already up-to-date"
+  end
+
+  # 伝播失敗（propagate_through_all_branches/2 の {:error, failure}）を
+  # 人間可読な複数行メッセージに整形する: どの pair がなぜ失敗したか、
+  # コンフリクトパス、そこまでの進捗、skip した pair。
+  # run/3 経由でのみ利用する内部関数だが、整形結果を直接検証するため @doc false で公開。
+  @doc false
+  def format_propagation_failure(failure) do
+    lines =
+      [failure_header(failure)] ++
+        conflicting_path_lines(failure.paths) ++
+        [
+          "   Before failure: merged #{failure.merged} branch(es), " <>
+            "#{failure.up_to_date} already up-to-date"
+        ] ++
+        skipped_lines(failure.skipped) ++
+        resolution_hint(failure)
+
+    Enum.join(lines, "\n")
+  end
+
+  defp failure_header(%{kind: :conflict} = failure) do
+    types = Enum.join(failure.types, ", ")
+    "Merge conflict (#{types}) while merging #{failure.lower} into #{failure.upper}"
+  end
+
+  defp failure_header(%{kind: :git, lower: nil} = failure) do
+    "Git operation failed: #{failure.reason}"
+  end
+
+  # ガードで lower != nil を明示し、上の nil 節との排他性を節順に依存させない
+  defp failure_header(%{kind: :git, lower: lower} = failure) when not is_nil(lower) do
+    "Git operation failed while merging #{failure.lower} into #{failure.upper}: " <>
+      failure.reason
+  end
+
+  defp conflicting_path_lines([]), do: []
+
+  defp conflicting_path_lines(paths) do
+    ["   Conflicting paths:"] ++ Enum.map(paths, fn path -> "   - #{path}" end)
+  end
+
+  defp skipped_lines([]), do: []
+
+  defp skipped_lines(pairs) do
+    ["   Skipped: " <> Enum.map_join(pairs, ", ", fn {lower, upper} -> "#{lower} → #{upper}" end)]
+  end
+
+  defp resolution_hint(%{kind: :conflict} = failure) do
+    [
+      "   Resolve the conflict manually (merge #{failure.lower} into #{failure.upper} " <>
+        "and push), then re-run."
+    ]
+  end
+
+  defp resolution_hint(_failure), do: []
 end

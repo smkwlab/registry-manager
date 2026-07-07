@@ -69,10 +69,10 @@ defmodule RegistryManager.Commands.PropagateWorkflowGitTest do
     test "fast-forwards main through the draft chain and pushes each branch", %{base: base} do
       %{work_dir: work_dir, remote: remote} = setup_repo_with_drafts(base)
 
-      count = PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: false)
+      result = PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: false)
 
       # main→0th-draft, 0th-draft→1st-draft の 2 ペアがマージされる
-      assert count == 2
+      assert result == {:ok, %{merged: 2, up_to_date: 0}}
 
       # remote の各 draft ブランチが main の commit2 を含むこと（v2 が伝播）を確認
       verify = Path.join(base, "verify")
@@ -101,8 +101,88 @@ defmodule RegistryManager.Commands.PropagateWorkflowGitTest do
       work_dir = Path.join(base, "work2")
       git!(["clone", "--quiet", remote, work_dir], base)
 
-      assert PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: true) == 0
+      assert PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: true) ==
+               {:ok, %{merged: 0, up_to_date: 0}}
     end
+
+    test "counts already up-to-date pairs separately from merged ones", %{base: base} do
+      %{work_dir: work_dir} = setup_repo_with_drafts(base)
+
+      # 1 回目で全ペアがマージされ、2 回目は何もすることがない
+      assert {:ok, %{merged: 2, up_to_date: 0}} =
+               PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: false)
+
+      assert {:ok, %{merged: 0, up_to_date: 2}} =
+               PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: false)
+    end
+
+    test "halts on a modify/delete conflict, aborts the merge, and reports details", %{
+      base: base
+    } do
+      %{work_dir: work_dir, remote: remote} = setup_conflicting_repo(base)
+
+      assert {:error, failure} =
+               PropagateWorkflow.propagate_through_all_branches(work_dir, verbose: false)
+
+      # どの pair のどのパスで、どの種別のコンフリクトかが報告される
+      assert failure.kind == :conflict
+      assert failure.lower == "main"
+      assert failure.upper == "0th-draft"
+      assert failure.paths == ["conflict.txt"]
+      assert failure.types == ["modify/delete"]
+
+      # 冪等 no-op は merged に数えず、後続 pair は skip として報告される
+      assert failure.merged == 0
+      assert failure.up_to_date == 0
+      assert failure.skipped == [{"0th-draft", "1st-draft"}]
+
+      # work_dir がマージ途中の状態で残らない（merge --abort 済み）
+      refute File.exists?(Path.join(work_dir, ".git/MERGE_HEAD"))
+
+      # リモートの draft ブランチは変更されていない
+      verify = Path.join(base, "verify-conflict")
+      git!(["clone", "--quiet", remote, verify], base)
+      git!(["checkout", "0th-draft"], verify)
+      assert File.read!(Path.join(verify, "conflict.txt")) == "draft edit\n"
+    end
+  end
+
+  # main→0th-draft が modify/delete コンフリクトになる remote + work_dir を構築して返す:
+  # 0th-draft は conflict.txt を改変、main は同ファイルを削除している（issue #126 の実例と同型）
+  defp setup_conflicting_repo(base) do
+    remote = Path.join(base, "conflict-remote.git")
+    seed = Path.join(base, "conflict-seed")
+    File.mkdir_p!(remote)
+    File.mkdir_p!(seed)
+
+    git!(["init", "--bare", "--initial-branch=main", "."], remote)
+    git!(["init", "--initial-branch=main", "."], seed)
+    git!(["config", "user.email", "test@example.com"], seed)
+    git!(["config", "user.name", "Test User"], seed)
+    git!(["remote", "add", "origin", remote], seed)
+
+    write_and_commit(seed, "conflict.txt", "original\n", "commit1")
+    git!(["push", "-u", "origin", "main"], seed)
+
+    # 0th-draft でファイルを改変して push（1st-draft は commit1 のまま）
+    git!(["branch", "1st-draft"], seed)
+    git!(["checkout", "-b", "0th-draft"], seed)
+    write_and_commit(seed, "conflict.txt", "draft edit\n", "draft edit")
+    git!(["push", "origin", "0th-draft"], seed)
+    git!(["push", "origin", "1st-draft"], seed)
+
+    # main では同ファイルを削除して push → modify/delete コンフリクトの素地
+    git!(["checkout", "main"], seed)
+    git!(["rm", "conflict.txt"], seed)
+    git!(["commit", "-m", "delete conflict.txt"], seed)
+    git!(["push", "origin", "main"], seed)
+
+    work_dir = Path.join(base, "conflict-work")
+    git!(["clone", "--quiet", remote, work_dir], base)
+    git!(["config", "user.email", "test@example.com"], work_dir)
+    git!(["config", "user.name", "Test User"], work_dir)
+
+    %{remote: remote, work_dir: work_dir}
   end
 
   # push 可能な remote と作業ディレクトリ（seed コミット済み）を構築して返す
