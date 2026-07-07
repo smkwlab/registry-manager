@@ -1,5 +1,9 @@
 defmodule RegistryManager.RepositoryInferenceTest do
-  use ExUnit.Case, async: true
+  # async: false 必須: このモジュールはグローバルな GitHubAPIMock Agent の
+  # レスポンスを set/reset する。async:true だと他の async モジュール
+  # （例: InferStudentIdTest のデフォルトモック読取り）と並走し、set と reset の
+  # 窓の間にグローバル override が漏れて flaky 失敗を起こす（issue #4）。
+  use ExUnit.Case, async: false
 
   alias RegistryManager.Repository
   alias RegistryManager.Test.GitHubAPIMock

@@ -168,8 +168,13 @@ defmodule RegistryManager.Commands.InferStudentId do
   end
 
   defp update_repository_with_student_id(repo_name, student_id, opts) do
-    # テストモードの場合は実際の更新をスキップ
-    if Application.get_env(:registry_manager, :test_mode, false) do
+    # テストモードの場合は実際の更新をスキップ。
+    # test_mode は opts 経由で受け取る（グローバル Application env に依存しないことで、
+    # async テストが :test_mode を出し入れするレースを避ける）。互換のため env も後方参照。
+    test_mode =
+      Keyword.get(opts, :test_mode) || Application.get_env(:registry_manager, :test_mode, false)
+
+    if test_mode do
       {:ok, "Student ID '#{student_id}' has been set for repository '#{repo_name}'"}
     else
       case Repository.update(repo_name, "student_id", student_id, opts) do

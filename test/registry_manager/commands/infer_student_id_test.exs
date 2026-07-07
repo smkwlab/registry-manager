@@ -4,14 +4,7 @@ defmodule RegistryManager.Commands.InferStudentIdTest do
   alias RegistryManager.Commands.InferStudentId
 
   describe "infer_student_id/2" do
-    setup do
-      # テストモードを有効化
-      Application.put_env(:registry_manager, :test_mode, true)
-
-      on_exit(fn ->
-        Application.delete_env(:registry_manager, :test_mode)
-      end)
-    end
+    # test_mode はグローバル Application env ではなく opts 経由で渡す（async レース回避）
 
     test "successfully infers and sets student_id from CSV via github_username" do
       # Setup test data - use unique test repository name
@@ -34,8 +27,8 @@ defmodule RegistryManager.Commands.InferStudentIdTest do
         csv_data: test_csv_data
       ]
 
-      # Execute
-      result = InferStudentId.run(["test-repo-123"], [], test_params)
+      # Execute（test_mode は opts 経由で渡し、実更新をスキップさせる）
+      result = InferStudentId.run(["test-repo-123"], [test_mode: true], test_params)
 
       # Verify
       assert {:ok, message} = result
@@ -157,13 +150,8 @@ defmodule RegistryManager.Commands.InferStudentIdTest do
   end
 
   describe "edge cases" do
-    setup do
-      Application.put_env(:registry_manager, :test_mode, true)
-
-      on_exit(fn ->
-        Application.delete_env(:registry_manager, :test_mode)
-      end)
-    end
+    # このブロックの各テストは update 経路に到達しない（username 抽出/状態検証で
+    # エラーになる）ため test_mode は不要。グローバル :test_mode は設定しない（async レース回避）
 
     test "treats an empty github_username as missing" do
       test_repositories = %{
