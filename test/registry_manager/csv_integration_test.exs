@@ -56,4 +56,42 @@ defmodule RegistryManager.CSVIntegrationTest do
       assert match?({:ok, _}, result) or match?({:error, _}, result)
     end
   end
+
+  # Issue #31: 実運用CSVは先頭に「卒業年度」「修了年度」等の列が加わり、
+  # 学籍番号/氏名/GitHub の列位置が旧レイアウトから +2 以上ずれる。
+  # 列位置ではなくヘッダ名で解決することで、どちらのレイアウトでも正しく
+  # 突合できることを検証する（列位置ハードコードだと氏名が全件 N/A になる回帰を防ぐ）。
+  describe "real-world CSV layout (Issue #31)" do
+    setup do
+      override =
+        Path.join([File.cwd!(), "test/fixtures/test_students_real_layout.csv"])
+
+      Application.put_env(:registry_manager, :csv_path_override, override)
+
+      on_exit(fn ->
+        Application.delete_env(:registry_manager, :csv_path_override)
+      end)
+
+      :ok
+    end
+
+    test "resolves student names from header regardless of leading columns" do
+      assert {:ok, students} = Repository.get_all_students_from_csv()
+
+      taro = Enum.find(students, &(&1["student_id"] == "k21rs001"))
+      assert taro["name"] == "テスト太郎"
+      assert taro["github_username"] == "taro-yamada"
+
+      hanako = Enum.find(students, &(&1["student_id"] == "k21rs002"))
+      assert hanako["name"] == "テスト花子"
+    end
+
+    test "resolves github username by student id on the shifted layout" do
+      assert {:ok, "taro-yamada"} = Repository.get_github_username_from_csv("k21rs001")
+    end
+
+    test "resolves student id from github username on the shifted layout" do
+      assert {:ok, "k21rs001"} = Repository.get_student_id_from_csv_by_github("taro-yamada")
+    end
+  end
 end

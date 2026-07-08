@@ -106,7 +106,9 @@ defmodule RegistryManager.Repository do
   defp get_csv_file_path do
     case get_env_mode() do
       :test ->
-        Path.join([File.cwd!(), "test/fixtures/test_students.csv"])
+        # テストで別レイアウトの fixture を検証できるよう、上書きパスを許可する
+        Application.get_env(:registry_manager, :csv_path_override) ||
+          Path.join([File.cwd!(), "test/fixtures/test_students.csv"])
 
       _ ->
         case Config.load_config().csv_path do
@@ -134,13 +136,54 @@ defmodule RegistryManager.Repository do
     end
   end
 
+  # 名簿 CSV の論理カラムとヘッダ行での列名の対応（Issue #31）。
+  # 実運用 CSV は先頭に「卒業年度」「修了年度」等の列が加わり列位置が変動するため、
+  # 列インデックスをハードコードせず、ヘッダ名から解決して列順の変化に強くする。
+  @csv_column_names %{
+    student_id: "学籍番号",
+    student_name: "学生氏名",
+    github_username: "GitHub"
+  }
+
+  # CSV の内容をヘッダから解決した {列名→index マップ, データ行リスト} に分解する。
+  # 実運用 CSV は CRLF 改行を含む場合があるため \r?\n で分割する（Issue #31）。
+  defp split_csv_content(content) do
+    case String.split(content, ~r/\r?\n/) do
+      [header | rows] -> {resolve_csv_columns(header), rows}
+      [] -> {%{}, []}
+    end
+  end
+
+  # ヘッダ行を論理カラム名 → 列インデックスのマップに変換する。
+  # 該当する列名が無い場合はそのカラムを nil とし、以降の突合では未取得として扱う。
+  defp resolve_csv_columns(header_line) do
+    headers =
+      header_line
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+
+    Map.new(@csv_column_names, fn {key, name} ->
+      {key, Enum.find_index(headers, &(&1 == name))}
+    end)
+  end
+
+  # 解決済みの列マップから 1 行分の指定カラム値を取り出す（trim 済み、無ければ nil）。
+  defp csv_field(parts, columns, key) do
+    case Map.get(columns, key) do
+      nil -> nil
+      index -> parts |> Enum.at(index) |> trim_csv_value()
+    end
+  end
+
+  defp trim_csv_value(nil), do: nil
+  defp trim_csv_value(value), do: String.trim(value)
+
   defp parse_github_username_from_csv(content, target_student_id) do
-    content
-    |> String.split("\n")
-    # Skip header
-    |> Enum.drop(1)
+    {columns, rows} = split_csv_content(content)
+
+    rows
     |> Enum.find_value(fn line ->
-      case parse_csv_line_for_github(line, target_student_id) do
+      case parse_csv_line_for_github(line, target_student_id, columns) do
         {:ok, github_username} -> github_username
         :not_found -> nil
       end
@@ -151,26 +194,23 @@ defmodule RegistryManager.Repository do
     end
   end
 
-  defp parse_csv_line_for_github(line, target_student_id) do
+  defp parse_csv_line_for_github(line, target_student_id, columns) do
     parts = String.split(line, ",")
+    student_id = csv_field(parts, columns, :student_id)
+    github_username = csv_field(parts, columns, :github_username)
 
-    case parts do
-      [_, _, student_id, _, _, _, _, github_username | _] ->
-        clean_student_id = String.trim(student_id)
-        clean_github_username = String.trim(github_username)
+    if is_binary(student_id) and is_binary(github_username) do
+      # Normalize student ID format for comparison
+      normalized_id = normalize_student_id_for_comparison(student_id)
+      normalized_target = normalize_student_id_for_comparison(target_student_id)
 
-        # Normalize student ID format for comparison
-        normalized_id = normalize_student_id_for_comparison(clean_student_id)
-        normalized_target = normalize_student_id_for_comparison(target_student_id)
-
-        if normalized_id == normalized_target and clean_github_username != "" do
-          {:ok, clean_github_username}
-        else
-          :not_found
-        end
-
-      _ ->
+      if normalized_id == normalized_target and github_username != "" do
+        {:ok, github_username}
+      else
         :not_found
+      end
+    else
+      :not_found
     end
   end
 
@@ -755,37 +795,30 @@ defmodule RegistryManager.Repository do
   end
 
   defp parse_student_id_from_github_username(content, target_username) do
-    content
-    |> String.split("\n")
-    # ヘッダーをスキップ
-    |> Enum.drop(1)
-    |> Enum.find_value(&parse_csv_line_for_username(&1, target_username))
+    {columns, rows} = split_csv_content(content)
+
+    rows
+    |> Enum.find_value(&parse_csv_line_for_username(&1, target_username, columns))
     |> case do
       nil -> {:error, "GitHub username not found in CSV"}
       result -> result
     end
   end
 
-  defp parse_csv_line_for_username(line, target_username) do
-    # 空行はスキップ（従来の return_if_empty_line は常に nil を返し
-    # 短絡が機能していなかった — Elixir 1.20 の型チェッカが検出）
+  defp parse_csv_line_for_username(line, target_username, columns) do
+    # 空行はスキップ
     if String.trim(line) == "" do
       nil
     else
-      parse_csv_parts_for_username(String.split(line, ","), target_username)
+      parts = String.split(line, ",")
+      student_id = csv_field(parts, columns, :student_id)
+      github_username = csv_field(parts, columns, :github_username)
+
+      if is_binary(student_id) and github_username == target_username and student_id != "" do
+        {:ok, normalize_student_id_for_comparison(student_id)}
+      end
     end
   end
-
-  defp parse_csv_parts_for_username(parts, target_username) when length(parts) >= 8 do
-    student_id = Enum.at(parts, 2) |> String.trim()
-    github_username = Enum.at(parts, 7) |> String.trim()
-
-    if github_username == target_username and student_id != "" do
-      {:ok, normalize_student_id_for_comparison(student_id)}
-    end
-  end
-
-  defp parse_csv_parts_for_username(_parts, _target_username), do: nil
 
   @doc """
   CSVファイルから全学生データを読み込み、List コマンドで使用可能な形式に変換
@@ -810,47 +843,33 @@ defmodule RegistryManager.Repository do
   end
 
   defp parse_all_students_from_csv(content) do
-    content
-    |> String.split("\n")
-    # ヘッダーをスキップ
-    |> Enum.drop(1)
-    |> Enum.map(&parse_csv_line_for_student/1)
+    {columns, rows} = split_csv_content(content)
+
+    rows
+    |> Enum.map(&parse_csv_line_for_student(&1, columns))
     |> Enum.filter(& &1)
   end
 
-  defp parse_csv_line_for_student(line) do
+  defp parse_csv_line_for_student(line, columns) do
     # 空行をスキップ
     if String.trim(line) == "" do
       nil
     else
       parts = String.split(line, ",")
-      parse_csv_parts_for_student(parts)
-    end
-  end
+      student_id = csv_field(parts, columns, :student_id)
+      student_name = csv_field(parts, columns, :student_name)
+      github_username = csv_field(parts, columns, :github_username)
 
-  defp parse_csv_parts_for_student(parts) do
-    student_id = safe_get_csv_field(parts, 2)
-    student_name = safe_get_csv_field(parts, 3)
-    github_username = safe_get_csv_field(parts, 7)
-
-    # 有効なデータのみを返す（学生IDと名前は必須）
-    if student_id && student_name && student_id != "" && student_name != "" do
-      %{
-        "student_id" => normalize_student_id_for_comparison(student_id),
-        "name" => student_name,
-        "github_username" => github_username || ""
-      }
-    else
-      nil
-    end
-  end
-
-  # CSV フィールドを安全に取得するヘルパー関数
-  defp safe_get_csv_field(parts, index) do
-    if length(parts) > index do
-      parts |> Enum.at(index) |> String.trim()
-    else
-      nil
+      # 有効なデータのみを返す（学生IDと名前は必須）
+      if student_id && student_name && student_id != "" && student_name != "" do
+        %{
+          "student_id" => normalize_student_id_for_comparison(student_id),
+          "name" => student_name,
+          "github_username" => github_username || ""
+        }
+      else
+        nil
+      end
     end
   end
 
