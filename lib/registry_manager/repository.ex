@@ -141,9 +141,14 @@ defmodule RegistryManager.Repository do
   # 列インデックスをハードコードせず、ヘッダ名から解決して列順の変化に強くする。
   @csv_column_names %{
     student_id: "学籍番号",
+    graduate_student_id: "大学院学籍番号",
     student_name: "学生氏名",
     github_username: "GitHub"
   }
+
+  # 学生の突合キーになりうる学籍番号の列。大学院生は「学籍番号」列に学部時代の
+  # 番号、「大学院学籍番号」列に院の番号が入るため、両方を突合候補とする（先頭優先）。
+  @csv_student_id_columns [:student_id, :graduate_student_id]
 
   # CSV の内容をヘッダから解決した {列名→index マップ, データ行リスト} に分解する。
   # 実運用 CSV は CRLF 改行を含む場合があるため \r?\n で分割する（Issue #31）。
@@ -178,6 +183,16 @@ defmodule RegistryManager.Repository do
   defp trim_csv_value(nil), do: nil
   defp trim_csv_value(value), do: String.trim(value)
 
+  # 1 行から突合対象となる学籍番号を正規化して列挙する（非空・先頭優先）。
+  # 正規化後に uniq することで、学部/院番号が同一キーに正規化される稀なケースも吸収する。
+  defp csv_student_ids(parts, columns) do
+    @csv_student_id_columns
+    |> Enum.map(&csv_field(parts, columns, &1))
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> Enum.map(&normalize_student_id_for_comparison/1)
+    |> Enum.uniq()
+  end
+
   defp parse_github_username_from_csv(content, target_student_id) do
     {columns, rows} = split_csv_content(content)
 
@@ -196,19 +211,13 @@ defmodule RegistryManager.Repository do
 
   defp parse_csv_line_for_github(line, target_student_id, columns) do
     parts = String.split(line, ",")
-    student_id = csv_field(parts, columns, :student_id)
+    student_ids = csv_student_ids(parts, columns)
     github_username = csv_field(parts, columns, :github_username)
+    normalized_target = normalize_student_id_for_comparison(target_student_id)
 
-    if is_binary(student_id) and is_binary(github_username) do
-      # Normalize student ID format for comparison
-      normalized_id = normalize_student_id_for_comparison(student_id)
-      normalized_target = normalize_student_id_for_comparison(target_student_id)
-
-      if normalized_id == normalized_target and github_username != "" do
-        {:ok, github_username}
-      else
-        :not_found
-      end
+    if is_binary(github_username) and github_username != "" and
+         normalized_target in student_ids do
+      {:ok, github_username}
     else
       :not_found
     end
@@ -811,17 +820,23 @@ defmodule RegistryManager.Repository do
       nil
     else
       parts = String.split(line, ",")
-      student_id = csv_field(parts, columns, :student_id)
+      student_ids = csv_student_ids(parts, columns)
       github_username = csv_field(parts, columns, :github_username)
 
-      if is_binary(student_id) and github_username == target_username and student_id != "" do
-        {:ok, normalize_student_id_for_comparison(student_id)}
+      # 逆引きは学籍番号（学部）を優先して 1 つ返す（先頭が学部番号）。
+      if github_username == target_username and student_ids != [] do
+        {:ok, List.first(student_ids)}
       end
     end
   end
 
   @doc """
   CSVファイルから全学生データを読み込み、List コマンドで使用可能な形式に変換
+
+  大学院生は学部/院の 2 つの学籍番号を持つため、同一人物が student_id ごとに
+  複数エントリとして返る場合がある（name / github_username は各エントリで同一）。
+  呼び出し元は student_id をキーにした突合（例: `Enum.find/2`）を前提としており、
+  重複排除は不要。全学生の一意カウント等が必要な場合は student_id で uniq すること。
   """
   def get_all_students_from_csv do
     case read_csv_file() do
@@ -845,33 +860,37 @@ defmodule RegistryManager.Repository do
   defp parse_all_students_from_csv(content) do
     {columns, rows} = split_csv_content(content)
 
-    rows
-    |> Enum.map(&parse_csv_line_for_student(&1, columns))
-    |> Enum.filter(& &1)
+    Enum.flat_map(rows, &parse_csv_line_for_student(&1, columns))
   end
 
   defp parse_csv_line_for_student(line, columns) do
     # 空行をスキップ
     if String.trim(line) == "" do
-      nil
+      []
     else
       parts = String.split(line, ",")
-      student_id = csv_field(parts, columns, :student_id)
+      student_ids = csv_student_ids(parts, columns)
       student_name = csv_field(parts, columns, :student_name)
       github_username = csv_field(parts, columns, :github_username)
 
-      # 有効なデータのみを返す（学生IDと名前は必須）
-      if student_id && student_name && student_id != "" && student_name != "" do
-        %{
-          "student_id" => normalize_student_id_for_comparison(student_id),
-          "name" => student_name,
-          "github_username" => github_username || ""
-        }
-      else
-        nil
-      end
+      build_student_entries(student_ids, student_name, github_username)
     end
   end
+
+  # 有効なデータのみをエントリ化する（学籍番号と氏名は必須）。大学院生は学部/院の
+  # 両学籍番号でマッチできるよう、student_id ごとにエントリを展開する。
+  defp build_student_entries(student_ids, student_name, github_username)
+       when student_ids != [] and is_binary(student_name) and student_name != "" do
+    Enum.map(student_ids, fn student_id ->
+      %{
+        "student_id" => student_id,
+        "name" => student_name,
+        "github_username" => github_username || ""
+      }
+    end)
+  end
+
+  defp build_student_entries(_student_ids, _student_name, _github_username), do: []
 
   @doc """
   リポジトリ名からリポジトリタイプを推論

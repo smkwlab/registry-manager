@@ -93,5 +93,28 @@ defmodule RegistryManager.CSVIntegrationTest do
     test "resolves student id from github username on the shifted layout" do
       assert {:ok, "k21rs001"} = Repository.get_student_id_from_csv_by_github("taro-yamada")
     end
+
+    # 大学院生は「学籍番号」列に学部時代の番号、「大学院学籍番号」列(index 3)に
+    # 院の番号が入る。registry はどちらのキーで登録されている可能性もあるため、
+    # 両列を突合候補に含めて氏名・github を解決できることを検証する。
+    # fixture 上の生値は k なし（学部=22rs004 / 院=26gjk01）だが、
+    # normalize_student_id_for_comparison により k プレフィックス付きへ正規化されるため、
+    # ここでは k22rs004 / k26gjk01 で突合される。
+    test "resolves graduate students by both undergraduate and graduate student id" do
+      assert {:ok, students} = Repository.get_all_students_from_csv()
+
+      by_undergrad = Enum.find(students, &(&1["student_id"] == "k22rs004"))
+      assert by_undergrad["name"] == "テスト院生"
+      assert by_undergrad["github_username"] == "grad-user"
+
+      by_graduate = Enum.find(students, &(&1["student_id"] == "k26gjk01"))
+      assert by_graduate["name"] == "テスト院生"
+      assert by_graduate["github_username"] == "grad-user"
+    end
+
+    test "resolves github username by either student id for graduate students" do
+      assert {:ok, "grad-user"} = Repository.get_github_username_from_csv("k22rs004")
+      assert {:ok, "grad-user"} = Repository.get_github_username_from_csv("k26gjk01")
+    end
   end
 end

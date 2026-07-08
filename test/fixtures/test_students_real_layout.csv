@@ -1,6 +1,7 @@
-k24,卒業年度,修了年度,,学籍番号,学生氏名,カナ氏名,,smkwlab,GitHub,AtCoder,副査1,副査2,,週報,卒論,
+k24,卒業年度,修了年度,大学院学籍番号,学籍番号,学生氏名,カナ氏名,ローマ字氏名,smkwlab,GitHub,AtCoder,副査1,副査2,,週報,卒論,
 staff,,,,,テスト教授,テスト キョウジュ,KYOJU TEST,test-prof,test-prof,test-prof,,,"Java, Elixir",test-prof-wr,sotsuron-template,
 ,,,,k21rs001,テスト太郎,テスト タロウ,TARO TEST,taro,taro-yamada,test-taro,,,,,,
 ,,,,k21rs002,テスト花子,テスト ハナコ,HANAKO TEST,hanako,hanako-suzuki,test-hanako,,,,,,
 ,,,,k21rs003,テスト次郎,テスト ジロウ,JIRO TEST,jiro,jiro-tanaka,test-jiro,,,,,,
 ,,,,k91rs012,テスト五郎,テスト ゴロウ,GORO TEST,sampleuser,k91rs012,test-sampleuser,,,,,,
+M1,2025,,26gjk01,22rs004,テスト院生,テスト インセイ,INSEI TEST,gradmk,grad-user,test-grad,,,,,,
