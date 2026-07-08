@@ -97,6 +97,9 @@ defmodule RegistryManager.CSVIntegrationTest do
     # 大学院生は「学籍番号」列に学部時代の番号、「大学院学籍番号」列(index 3)に
     # 院の番号が入る。registry はどちらのキーで登録されている可能性もあるため、
     # 両列を突合候補に含めて氏名・github を解決できることを検証する。
+    # fixture 上の生値は k なし（学部=22rs004 / 院=26gjk01）だが、
+    # normalize_student_id_for_comparison により k プレフィックス付きへ正規化されるため、
+    # ここでは k22rs004 / k26gjk01 で突合される。
     test "resolves graduate students by both undergraduate and graduate student id" do
       assert {:ok, students} = Repository.get_all_students_from_csv()
 

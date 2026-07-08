@@ -183,7 +183,8 @@ defmodule RegistryManager.Repository do
   defp trim_csv_value(nil), do: nil
   defp trim_csv_value(value), do: String.trim(value)
 
-  # 1 行から突合対象となる学籍番号を正規化して列挙する（非空・重複除去、先頭優先）。
+  # 1 行から突合対象となる学籍番号を正規化して列挙する（非空・先頭優先）。
+  # 正規化後に uniq することで、学部/院番号が同一キーに正規化される稀なケースも吸収する。
   defp csv_student_ids(parts, columns) do
     @csv_student_id_columns
     |> Enum.map(&csv_field(parts, columns, &1))
@@ -831,6 +832,11 @@ defmodule RegistryManager.Repository do
 
   @doc """
   CSVファイルから全学生データを読み込み、List コマンドで使用可能な形式に変換
+
+  大学院生は学部/院の 2 つの学籍番号を持つため、同一人物が student_id ごとに
+  複数エントリとして返る場合がある（name / github_username は各エントリで同一）。
+  呼び出し元は student_id をキーにした突合（例: `Enum.find/2`）を前提としており、
+  重複排除は不要。全学生の一意カウント等が必要な場合は student_id で uniq すること。
   """
   def get_all_students_from_csv do
     case read_csv_file() do
