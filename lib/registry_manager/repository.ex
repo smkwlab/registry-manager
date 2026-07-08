@@ -146,8 +146,9 @@ defmodule RegistryManager.Repository do
   }
 
   # CSV の内容をヘッダから解決した {列名→index マップ, データ行リスト} に分解する。
+  # 実運用 CSV は CRLF 改行を含む場合があるため \r?\n で分割する（Issue #31）。
   defp split_csv_content(content) do
-    case String.split(content, "\n") do
+    case String.split(content, ~r/\r?\n/) do
       [header | rows] -> {resolve_csv_columns(header), rows}
       [] -> {%{}, []}
     end
