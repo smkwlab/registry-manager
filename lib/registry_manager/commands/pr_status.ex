@@ -65,8 +65,6 @@ defmodule RegistryManager.Commands.PrStatus do
       type: type,
       state: state,
       no_cache: opts[:no_cache] || false,
-      include_reviews: opts[:include_reviews] || false,
-      show_activity: opts[:show_activity] || false,
       sort: effective_sort,
       reverse: opts[:reverse] || false,
       review_requested: opts[:review_requested] || false

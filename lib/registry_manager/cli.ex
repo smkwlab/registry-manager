@@ -72,8 +72,6 @@ defmodule RegistryManager.CLI do
           remove_owner: :string,
           set_owners: :string,
           state: :string,
-          include_reviews: :boolean,
-          show_activity: :boolean,
           review_requested: :boolean,
           sort: :string,
           all: :boolean,
@@ -255,9 +253,6 @@ defmodule RegistryManager.CLI do
       
       add <repo_name> <student_id> <repo_type>
           リポジトリ情報を新規登録（明示的形式）
-      
-      add <repo_name> <student_id> <repo_type> <status> [stage]
-          リポジトリ情報を新規登録（旧形式・非推奨）
 
       update <repo_name> <field> <value>
           既存リポジトリ情報を更新
@@ -327,7 +322,6 @@ defmodule RegistryManager.CLI do
       registry-manager add k21rs001-sotsuron  # 推論形式（推奨）
       registry-manager add myorg/k21rs001-wr  # org/repo形式も対応
       registry-manager add k21rs001-sotsuron k21rs001 sotsuron  # 明示的形式
-      registry-manager add k21rs001-sotsuron k21rs001 sotsuron active thesis  # 非推奨
       registry-manager update k21rs001-sotsuron status completed
       registry-manager remove k21rs001-sotsuron
       registry-manager remove k21rs001-sotsuron --delete-github-repo --force
