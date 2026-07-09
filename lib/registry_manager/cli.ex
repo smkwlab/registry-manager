@@ -3,6 +3,7 @@ defmodule RegistryManager.CLI do
   CLI interface for registry manager
   """
 
+  alias RegistryManager.CLI.Spec
   alias RegistryManager.Commands.Cache
   alias RegistryManager.Commands.Edit
   alias RegistryManager.Commands.InferStudentId
@@ -47,59 +48,45 @@ defmodule RegistryManager.CLI do
 
   @doc false
   def parse_args(args) do
-    {opts, argv, _} =
-      OptionParser.parse(args,
-        strict: [
-          help: :boolean,
-          dry_run: :boolean,
-          verbose: :boolean,
-          delete_github_repo: :boolean,
-          force: :boolean,
-          show_type: :boolean,
-          show_protection: :boolean,
-          no_names: :boolean,
-          long: :boolean,
-          activity: :boolean,
-          owner_activity: :boolean,
-          show_registry_updated: :boolean,
-          show_both_timestamps: :boolean,
-          no_cache: :boolean,
-          format: :string,
-          type: :string,
-          sort_by_time: :boolean,
-          reverse: :boolean,
-          show_student_id: :boolean,
-          add_owner: :string,
-          remove_owner: :string,
-          set_owners: :string,
-          state: :string,
-          review_requested: :boolean,
-          sort: :string,
-          all: :boolean,
-          from_template: :boolean,
-          org: :string
-        ],
-        aliases: [
-          h: :help,
-          d: :dry_run,
-          v: :verbose,
-          f: :force,
-          T: :type,
-          l: :long,
-          a: :activity,
-          o: :owner_activity,
-          t: :sort_by_time,
-          r: :reverse,
-          s: :show_student_id,
-          p: :show_protection
-        ]
-      )
+    {opts, argv, invalid} =
+      OptionParser.parse(args, strict: Spec.strict_switches(), aliases: Spec.aliases())
 
-    if opts[:help] do
-      :help
-    else
-      parse_command(argv, opts)
+    cond do
+      invalid != [] ->
+        {:error, "不明なオプション: #{Enum.map_join(invalid, ", ", fn {name, _} -> name end)}"}
+
+      opts[:help] ->
+        parse_help_target(argv)
+
+      true ->
+        parse_validated_command(argv, opts)
     end
+  end
+
+  # `<command> --help` はコマンド単体の help に落とす
+  defp parse_help_target([first | _]) do
+    case Spec.find_command(first) do
+      nil -> :help
+      command -> {:help_command, command.name}
+    end
+  end
+
+  defp parse_help_target(_), do: :help
+
+  # コマンドに属さないオプションと enum 違反をパース段階でエラーにする
+  defp parse_validated_command(argv, opts) do
+    case Spec.validate_opts(first_arg(argv), opts) do
+      :ok -> parse_command(argv, opts)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp first_arg([first | _]), do: first
+  defp first_arg(_), do: nil
+
+  @doc false
+  def known_commands do
+    Map.keys(command_parser_map()) -- ["cache-alias"]
   end
 
   @doc false
@@ -236,119 +223,18 @@ defmodule RegistryManager.CLI do
 
   @spec process_impl(any()) :: no_return()
   defp process_impl(:help) do
-    print_output("""
-    registry-manager - 学生リポジトリレジストリ管理ツール
-
-    使用方法:
-      registry-manager <command> [options]
-
-    コマンド:
-      init [owner/repo]
-          レジストリデータリポジトリの bootstrap（private repo 作成・
-          data/registry.json と README の初期投入・config 生成、冪等）
-          省略時は <org>/thesis-student-registry。--org で組織指定、
-          --force で既存 config を上書き
-
-      add <repo_name>
-          リポジトリ情報を新規登録（推論形式・推奨）
-          GitHub APIからリポジトリ情報を取得し、CSVから学生IDを特定
-      
-      add <repo_name> <student_id> <repo_type>
-          リポジトリ情報を新規登録（明示的形式）
-
-      update <repo_name> <field> <value>
-          既存リポジトリ情報を更新
-
-      remove <repo_name>
-          リポジトリ情報をレジストリから削除
-
-      protect <repo_name>
-          ブランチ保護設定完了をマーク
-
-      list [filter] (エイリアス: ls)
-          リポジトリ一覧・状況を表示
-
-      pr-status [filter]
-          各リポジトリのPull Request状態を表示
-          --format table|csv|json : 出力形式
-          --type wr|ise|sotsuron : リポジトリタイプフィルタ
-          --state open|closed|all : PR状態フィルタ
-          --review-requested : 保留中のレビューリクエストがあるPRのみ表示
-          --sort repository|updated|created : ソート順（デフォルト: repository）
-          --reverse : ソート順を反転
-
-      propagate-workflow <repo_name>
-          ワークフロー更新をドラフトブランチ階層に伝播
-          main → 0th-draft → 1st-draft → ... の順でマージ
-          --all : 全リポジトリを処理
-          --type wr|ise|sotsuron|thesis : リポジトリタイプフィルタ
-          --from-template : テンプレートから最新ワークフローを適用してから伝播
-          --dry-run : 実行せずに確認のみ
-
-      validate [repo_name]
-          データの整合性を検証（全件または単一リポジトリ）
-          --format table|csv|json : 出力形式
-          -v, --verbose : 件別の検証結果を表示
-
-      migrate [status|dry-run|execute]
-          レジストリデータをv1からv4形式に移行
-
-      infer-student-id <repo_name>
-          github_usernameからCSVを元に学生IDを推論して設定
-
-      edit <repo_name>
-          リポジトリのGitHubオーナーを編集
-          --add-owner <username>      オーナーを追加
-          --remove-owner <username>   オーナーを削除
-          --set-owners <user1,user2>  オーナーを設定（カンマ区切り）
-
-    オプション:
-      -d, --dry-run               実際の変更を行わない
-      -v, --verbose               詳細ログを表示
-      --delete-github-repo        GitHubリポジトリも削除（removeコマンドのみ）
-      -f, --force                 確認をスキップ（危険な操作時）
-      -l, --long                  詳細テーブル表示（listコマンド）
-      --show-type                 リポジトリタイプ列を表示（listコマンド）
-      --show-protection           保護状態列を表示（listコマンド）
-      --no-names                  学生名を非表示（listコマンド）
-      -a, --activity              リポジトリの最終活動時刻を取得表示（listコマンド）
-      -o, --owner-activity        リポジトリオーナーの活動時刻を取得表示（listコマンド）
-      --format table|csv|json     出力形式を指定（listコマンド）
-      -T, --type TYPE             リポジトリタイプでフィルタ（listコマンド）
-      -t, --sort-by-time          時刻でソート（新しい順）（listコマンド）
-      -r, --reverse               ソート順を逆にする（listコマンド）
-      -s, --show-student-id       学生IDを表示（listコマンド）
-      --no-cache                  キャッシュを使用しない（listコマンド）
-                                  例: wr, ise-report, sotsuron
-      -h, --help                  このヘルプを表示
-
-    例:
-      registry-manager add k21rs001-sotsuron  # 推論形式（推奨）
-      registry-manager add myorg/k21rs001-wr  # org/repo形式も対応
-      registry-manager add k21rs001-sotsuron k21rs001 sotsuron  # 明示的形式
-      registry-manager update k21rs001-sotsuron status completed
-      registry-manager remove k21rs001-sotsuron
-      registry-manager remove k21rs001-sotsuron --delete-github-repo --force
-      registry-manager protect k21rs001-sotsuron
-      registry-manager list
-      registry-manager list --long
-      registry-manager list --type wr --long
-      registry-manager list --activity --type sotsuron --long
-      registry-manager list --format csv
-      registry-manager list active
-      registry-manager validate
-      registry-manager migrate status  # 移行が必要なエントリを確認
-      registry-manager migrate dry-run  # 移行のシミュレーション実行
-      registry-manager migrate execute  # 実際の移行を実行
-      registry-manager infer-student-id 91rs044-wr  # github_usernameから学生IDを推論
-      registry-manager infer-student-id demouser-wr --dry-run  # ドライランで確認
-      registry-manager propagate-workflow k92rs001-sotsuron  # 単一リポジトリ
-      registry-manager propagate-workflow --all --type thesis  # 全論文リポジトリ
-      registry-manager propagate-workflow --all --type thesis --dry-run  # 確認のみ
-      registry-manager propagate-workflow --all --type thesis --from-template  # テンプレートから適用
-    """)
-
+    print_output(Spec.render_help())
     exit_with_code(0)
+  end
+
+  defp process_impl({:help_command, name}) do
+    print_output(Spec.render_command_help(name))
+    exit_with_code(0)
+  end
+
+  defp process_impl({:error, reason}) do
+    print_output("❌ エラー: #{reason}")
+    exit_with_code(1)
   end
 
   defp process_impl({:init, args, opts}) do

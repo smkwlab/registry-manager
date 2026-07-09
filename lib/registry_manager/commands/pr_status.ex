@@ -17,14 +17,9 @@ defmodule RegistryManager.Commands.PrStatus do
   """
 
   alias RegistryManager.Cache
+  alias RegistryManager.CLI.Spec
   alias RegistryManager.GitHubAPI
   alias RegistryManager.GitHubAPI.{Client, Parser}
-
-  @valid_formats ["table", "csv", "json"]
-  # Issue #111: Added master and other types
-  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
-  @valid_states ["open", "closed", "all"]
-  @valid_sort_options ["repository", "updated", "created"]
 
   # Issue #120: Cache configuration
   @cache_category "pr-status"
@@ -78,27 +73,42 @@ defmodule RegistryManager.Commands.PrStatus do
 
   # プライベート関数
 
-  defp validate_format(format) when format in @valid_formats, do: {:ok, format}
-
-  defp validate_format(format),
-    do: {:error, "Invalid format: #{format}. Valid formats: #{Enum.join(@valid_formats, ", ")}"}
+  defp validate_format(format) do
+    if format in Spec.output_formats() do
+      {:ok, format}
+    else
+      {:error,
+       "Invalid format: #{format}. Valid formats: #{Enum.join(Spec.output_formats(), ", ")}"}
+    end
+  end
 
   defp validate_type(nil), do: {:ok, nil}
-  defp validate_type(type) when type in @valid_types, do: {:ok, type}
 
-  defp validate_type(type),
-    do: {:error, "Invalid type: #{type}. Valid types: #{Enum.join(@valid_types, ", ")}"}
+  defp validate_type(type) do
+    if type in Spec.repo_types() do
+      {:ok, type}
+    else
+      {:error, "Invalid type: #{type}. Valid types: #{Enum.join(Spec.repo_types(), ", ")}"}
+    end
+  end
 
-  defp validate_state(state) when state in @valid_states, do: {:ok, state}
-
-  defp validate_state(state),
-    do: {:error, "Invalid state: #{state}. Valid states: #{Enum.join(@valid_states, ", ")}"}
+  defp validate_state(state) do
+    if state in Spec.pr_states() do
+      {:ok, state}
+    else
+      {:error, "Invalid state: #{state}. Valid states: #{Enum.join(Spec.pr_states(), ", ")}"}
+    end
+  end
 
   defp validate_sort(nil), do: {:ok, nil}
-  defp validate_sort(sort) when sort in @valid_sort_options, do: {:ok, sort}
 
-  defp validate_sort(sort),
-    do: {:error, "Invalid sort: #{sort}. Valid options: #{Enum.join(@valid_sort_options, ", ")}"}
+  defp validate_sort(sort) do
+    if sort in Spec.pr_sort_keys() do
+      {:ok, sort}
+    else
+      {:error, "Invalid sort: #{sort}. Valid options: #{Enum.join(Spec.pr_sort_keys(), ", ")}"}
+    end
+  end
 
   defp get_repositories(test_params) do
     if Keyword.has_key?(test_params, :repositories) do

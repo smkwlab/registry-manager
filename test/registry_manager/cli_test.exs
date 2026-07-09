@@ -175,13 +175,46 @@ defmodule RegistryManager.CLITest do
   end
 
   describe "option parsing combinations" do
-    test "deletion options with force and delete-github-repo" do
-      args = ["remove", "repo-name", "--delete-github-repo", "--force"]
+    test "deletion options with delete-github-repo" do
+      args = ["remove", "repo-name", "--delete-github-repo"]
       result = CLI.parse_args(args)
 
       assert {:remove, "repo-name", opts} = result
       assert opts[:delete_github_repo] == true
-      assert opts[:force] == true
+    end
+  end
+
+  describe "strict option validation" do
+    test "unknown options are rejected instead of silently ignored" do
+      assert {:error, message} = CLI.parse_args(["validate", "--fix"])
+      assert message =~ "--fix"
+    end
+
+    test "options from another command are rejected" do
+      assert {:error, message} = CLI.parse_args(["add", "repo-name", "--format", "json"])
+      assert message =~ "--format"
+    end
+
+    test "force is not accepted by remove (nothing reads it)" do
+      assert {:error, message} = CLI.parse_args(["remove", "repo-name", "--force"])
+      assert message =~ "--force"
+    end
+
+    test "enum values are validated at parse time" do
+      assert {:error, message} = CLI.parse_args(["list", "--type", "bogus"])
+      assert message =~ "bogus"
+    end
+
+    test "propagate-workflow --type is enum-validated" do
+      assert {:error, message} =
+               CLI.parse_args(["propagate-workflow", "--all", "--type", "bogus"])
+
+      assert message =~ "bogus"
+    end
+
+    test "command --help returns command-scoped help" do
+      assert {:help_command, "pr-status"} = CLI.parse_args(["pr-status", "--help"])
+      assert :help = CLI.parse_args(["--help"])
     end
   end
 
@@ -192,10 +225,10 @@ defmodule RegistryManager.CLITest do
     end
 
     test "handles mixed valid and invalid options" do
-      # Valid options are parsed, invalid ones are ignored by OptionParser
+      # 不明なオプションはサイレント無視せずエラーにする
       result = CLI.parse_args(["list", "--format", "json", "--invalid-option"])
-      assert {:list, nil, opts} = result
-      assert opts[:format] == "json"
+      assert {:error, message} = result
+      assert message =~ "--invalid-option"
     end
   end
 
