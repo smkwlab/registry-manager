@@ -63,6 +63,8 @@ defmodule RegistryManager.CLI.Spec do
     no_cache: %{type: :boolean, alias: nil, values: nil, doc: "キャッシュを使用しない"},
     format: %{type: :string, alias: nil, values: @output_formats, doc: "出力形式"},
     type: %{type: :string, alias: :T, values: @repo_types, doc: "リポジトリタイプでフィルタ"},
+    # alias: :t が -t を受理させる（OptionParser は aliases 経由でのみ 1 文字形を解釈する）。
+    # 名前と alias が同一なのは、長い形 --t を公開しない短縮専用オプションのため
     t: %{type: :boolean, alias: :t, values: nil, doc: "--sort time の短縮"},
     reverse: %{type: :boolean, alias: :r, values: nil, doc: "ソート順を反転"},
     show_student_id: %{type: :boolean, alias: :s, values: nil, doc: "学生IDを表示"},
@@ -250,11 +252,14 @@ defmodule RegistryManager.CLI.Spec do
   end
 
   defp resolve_option(name) when is_atom(name) do
-    Map.put(@option_catalog[name], :name, name)
+    @option_catalog
+    |> Map.fetch!(name)
+    |> Map.put(:name, name)
   end
 
   defp resolve_option({name, override}) do
-    @option_catalog[name]
+    @option_catalog
+    |> Map.fetch!(name)
     |> Map.merge(override)
     |> Map.put(:name, name)
   end
@@ -398,7 +403,7 @@ defmodule RegistryManager.CLI.Spec do
     end
   end
 
-  defp single_char_name?(name), do: String.length(Atom.to_string(name)) == 1
+  defp single_char_name?(name), do: byte_size(Atom.to_string(name)) == 1
 
   defp render_values(%{values: values}) when is_list(values), do: Enum.join(values, "|")
   defp render_values(_), do: "VALUE"

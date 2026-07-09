@@ -40,6 +40,16 @@ defmodule RegistryManager.CLI.SpecTest do
       assert Spec.find_command("unknown") == nil
     end
 
+    test "unknown option names in a command spec raise with the key" do
+      assert_raise KeyError, fn ->
+        Spec.options_for(%{options: [:nonexistent_option]})
+      end
+
+      assert_raise KeyError, fn ->
+        Spec.options_for(%{options: [{:nonexistent_option, %{values: ["x"]}}]})
+      end
+    end
+
     test "strict switches cover every option referenced by a command" do
       switch_names = Keyword.keys(Spec.strict_switches()) |> MapSet.new()
 

@@ -176,7 +176,9 @@ defmodule RegistryManager.CLI do
   defp parse_list_command([filter], opts), do: {:list, filter, normalize_list_sort(opts)}
   defp parse_list_command(_, _opts), do: :help
 
-  # -t は --sort time の短縮（明示的な --sort が優先）
+  # -t は --sort time の短縮（明示的な --sort が優先）。
+  # OptionParser は同一スイッチの重複で末尾を採用するが、:sort と :t は別スイッチ
+  # なので順序に依らず opts に両方残り、put_new が明示的な :sort を保護する
   defp normalize_list_sort(opts) do
     if opts[:t] do
       opts |> Keyword.delete(:t) |> Keyword.put_new(:sort, "time")
