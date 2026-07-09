@@ -13,6 +13,7 @@ defmodule RegistryManager.CLI do
   alias RegistryManager.Commands.PropagateWorkflow
   alias RegistryManager.Commands.PrStatus
   alias RegistryManager.Commands.Validate
+  alias RegistryManager.Config
   alias RegistryManager.Repository
 
   # テスト用の関数（通常時は System.halt と IO.puts を使用）
@@ -75,9 +76,46 @@ defmodule RegistryManager.CLI do
 
   # コマンドに属さないオプションと enum 違反をパース段階でエラーにする
   defp parse_validated_command(argv, opts) do
-    case Spec.validate_opts(first_arg(argv), opts) do
-      :ok -> parse_command(argv, opts)
+    with :ok <- Spec.validate_opts(first_arg(argv), opts),
+         :ok <- apply_config_overrides(opts) do
+      parse_command(argv, opts)
+    else
       {:error, _} = error -> error
+    end
+  end
+
+  # CLI フラグによる設定上書き（ECOSYSTEM.md 規約: CLI > env > config > default）。
+  # Config.load_config() は約 20 箇所からアドホックに呼ばれるため、struct を
+  # 引き回さず Application env を最終マージレイヤとして渡す
+  defp apply_config_overrides(opts) do
+    with :ok <- validate_registry_repo_opt(opts[:registry_repo]) do
+      put_config_overrides(opts)
+      :ok
+    end
+  end
+
+  defp validate_registry_repo_opt(nil), do: :ok
+
+  defp validate_registry_repo_opt(value) do
+    if Config.valid_registry_repo?(value) do
+      :ok
+    else
+      {:error, "--registry-repo は owner/repo 形式で指定してください: #{value}"}
+    end
+  end
+
+  defp put_config_overrides(opts) do
+    overrides =
+      [registry_repo: opts[:registry_repo], github_org: opts[:org]]
+      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+      |> Map.new()
+
+    if map_size(overrides) > 0 do
+      Application.put_env(:registry_manager, :cli_overrides, overrides)
+    end
+
+    if opts[:config] do
+      Application.put_env(:registry_manager, :config_path, opts[:config])
     end
   end
 

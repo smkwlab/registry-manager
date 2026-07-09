@@ -2,10 +2,12 @@ defmodule RegistryManager.Config do
   @moduledoc """
   Configuration management for registry-manager.
 
-  Handles loading configuration from multiple sources with proper priority:
-  1. User config file (~/.config/registry-manager/config.json)
+  Handles loading configuration from multiple sources with proper priority
+  (ECOSYSTEM.md の Tool Configuration Conventions に準拠):
+  1. CLI flags (--registry-repo / --org / --config)
   2. Environment variables
-  3. Default values
+  3. User config file (~/.config/registry-manager/config.yml)
+  4. Default values
   """
 
   # csv_path: optional student-roster CSV for name resolution (nil = disabled)
@@ -194,16 +196,25 @@ defmodule RegistryManager.Config do
 
   @doc """
   Loads configuration with proper priority:
-  User config > Environment variables > Default values
+  CLI flags > Environment variables > User config > Default values
+
+  CLI フラグは CLI 層が `Application.put_env(:registry_manager, :cli_overrides, %{...})`
+  （設定ファイルパスは `:config_path`）として登録し、ここで最終レイヤとして
+  マージされる。
   """
-  @spec load_config(String.t()) :: t()
-  def load_config(config_file_path \\ get_default_config_path()) do
+  @spec load_config(String.t() | nil) :: t()
+  def load_config(config_file_path \\ nil) do
+    path =
+      config_file_path ||
+        Application.get_env(:registry_manager, :config_path) ||
+        get_default_config_path()
+
     default_config = default_config()
-
+    user_config = load_user_config(path)
     env_config = load_env_config()
-    user_config = load_user_config(config_file_path)
+    cli_overrides = Application.get_env(:registry_manager, :cli_overrides, %{})
 
-    merge_configs([default_config, env_config, user_config])
+    merge_configs([default_config, user_config, env_config, cli_overrides])
     |> apply_csv_convention()
   end
 
@@ -283,10 +294,18 @@ defmodule RegistryManager.Config do
   end
 
   # nil = not configured yet; commands needing GitHub data access report it
+  @doc """
+  Returns true when the value is in "owner/repo" format.
+  """
+  @spec valid_registry_repo?(String.t()) :: boolean()
+  def valid_registry_repo?(value) when is_binary(value) do
+    Regex.match?(~r{\A[^/\s]+/[^/\s]+\z}, value)
+  end
+
   defp validate_registry_repo(nil), do: :ok
 
   defp validate_registry_repo(registry_repo) do
-    if Regex.match?(~r{\A[^/\s]+/[^/\s]+\z}, registry_repo) do
+    if valid_registry_repo?(registry_repo) do
       :ok
     else
       {:error, "registry_repo must be in \"owner/repo\" format: #{registry_repo}"}

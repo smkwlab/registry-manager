@@ -66,6 +66,9 @@ defmodule RegistryManager.CLI.SpecTest do
         allowed = Spec.allowed_for(command.name)
         assert MapSet.member?(allowed, :help)
         assert MapSet.member?(allowed, :verbose)
+        assert MapSet.member?(allowed, :registry_repo)
+        assert MapSet.member?(allowed, :config)
+        assert MapSet.member?(allowed, :org)
       end
     end
 

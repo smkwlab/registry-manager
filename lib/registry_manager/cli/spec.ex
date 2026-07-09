@@ -33,6 +33,13 @@ defmodule RegistryManager.CLI.Spec do
   @option_catalog %{
     help: %{type: :boolean, alias: :h, values: nil, doc: "このヘルプを表示"},
     verbose: %{type: :boolean, alias: :v, values: nil, doc: "詳細ログを表示"},
+    registry_repo: %{
+      type: :string,
+      alias: nil,
+      values: nil,
+      doc: "registry_repo を上書き（owner/repo 形式）"
+    },
+    config: %{type: :string, alias: :c, values: nil, doc: "設定ファイルのパスを上書き"},
     dry_run: %{type: :boolean, alias: :d, values: nil, doc: "実際の変更を行わない"},
     delete_github_repo: %{
       type: :boolean,
@@ -88,8 +95,10 @@ defmodule RegistryManager.CLI.Spec do
     }
   }
 
-  # 全コマンドで使えるオプション
-  @global_option_names [:help, :verbose]
+  # 全コマンドで使えるオプション。
+  # registry_repo / config / org は ECOSYSTEM.md 規約の
+  # 「CLI フラグ > 環境変数 > ローカル config」を実現する上書きフラグ
+  @global_option_names [:help, :verbose, :registry_repo, :config, :org]
 
   @commands [
     %{
@@ -98,7 +107,7 @@ defmodule RegistryManager.CLI.Spec do
       usage: ["init [owner/repo]"],
       summary:
         "レジストリデータリポジトリの bootstrap（private repo 作成・data/registry.json と README の初期投入・config 生成、冪等）",
-      options: [:org, :force],
+      options: [:force],
       examples: ["init", "init smkwlab/thesis-student-registry --org smkwlab"]
     },
     %{

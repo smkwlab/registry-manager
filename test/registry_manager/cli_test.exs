@@ -252,6 +252,47 @@ defmodule RegistryManager.CLITest do
     end
   end
 
+  describe "config override flags (issue #38)" do
+    setup do
+      on_exit(fn ->
+        Application.delete_env(:registry_manager, :cli_overrides)
+        Application.delete_env(:registry_manager, :config_path)
+      end)
+
+      :ok
+    end
+
+    test "--registry-repo sets the cli override for any command" do
+      assert {:list, nil, _opts} = CLI.parse_args(["list", "--registry-repo", "acme/registry"])
+
+      assert Application.get_env(:registry_manager, :cli_overrides) == %{
+               registry_repo: "acme/registry"
+             }
+    end
+
+    test "invalid --registry-repo fails at parse time" do
+      assert {:error, message} = CLI.parse_args(["list", "--registry-repo", "not-a-repo"])
+      assert message =~ "owner/repo"
+      assert Application.get_env(:registry_manager, :cli_overrides) == nil
+    end
+
+    test "-c sets the config path override" do
+      assert {:validate, [], _opts} = CLI.parse_args(["validate", "-c", "/tmp/alt-config.yml"])
+      assert Application.get_env(:registry_manager, :config_path) == "/tmp/alt-config.yml"
+    end
+
+    test "--org is a global override" do
+      assert {:pr_status, nil, _opts} = CLI.parse_args(["pr-status", "--org", "acme"])
+      assert Application.get_env(:registry_manager, :cli_overrides) == %{github_org: "acme"}
+    end
+
+    test "no override flags leaves the application env untouched" do
+      assert {:list, nil, _opts} = CLI.parse_args(["list"])
+      assert Application.get_env(:registry_manager, :cli_overrides) == nil
+      assert Application.get_env(:registry_manager, :config_path) == nil
+    end
+  end
+
   describe "edge cases" do
     test "empty arguments default to help" do
       result = CLI.parse_args([])
