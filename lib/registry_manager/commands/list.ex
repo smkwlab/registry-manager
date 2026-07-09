@@ -25,11 +25,9 @@ defmodule RegistryManager.Commands.List do
   """
 
   alias RegistryManager.{Cache, Config, GitHubAPI, TimestampManager}
+  alias RegistryManager.CLI.Spec
 
   require Logger
-
-  @valid_formats ["table", "csv", "json"]
-  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
 
   @doc """
   Runs the list command with given arguments and options.
@@ -81,20 +79,23 @@ defmodule RegistryManager.Commands.List do
   end
 
   defp validate_format(opts) do
-    case Keyword.get(opts, :format, "table") do
-      format when format in @valid_formats ->
-        :ok
+    format = Keyword.get(opts, :format, "table")
 
-      format ->
-        {:error, "Invalid format: #{format}. Valid formats: #{Enum.join(@valid_formats, ", ")}"}
+    if format in Spec.output_formats() do
+      :ok
+    else
+      {:error,
+       "Invalid format: #{format}. Valid formats: #{Enum.join(Spec.output_formats(), ", ")}"}
     end
   end
 
   defp validate_type(opts) do
-    case Keyword.get(opts, :type) do
-      nil -> :ok
-      type when type in @valid_types -> :ok
-      type -> {:error, "Invalid type: #{type}. Valid types: #{Enum.join(@valid_types, ", ")}"}
+    type = Keyword.get(opts, :type)
+
+    if is_nil(type) or type in Spec.repo_types() do
+      :ok
+    else
+      {:error, "Invalid type: #{type}. Valid types: #{Enum.join(Spec.repo_types(), ", ")}"}
     end
   end
 

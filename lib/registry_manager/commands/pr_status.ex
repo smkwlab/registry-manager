@@ -17,12 +17,10 @@ defmodule RegistryManager.Commands.PrStatus do
   """
 
   alias RegistryManager.Cache
+  alias RegistryManager.CLI.Spec
   alias RegistryManager.GitHubAPI
   alias RegistryManager.GitHubAPI.{Client, Parser}
 
-  @valid_formats ["table", "csv", "json"]
-  # Issue #111: Added master and other types
-  @valid_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
   @valid_states ["open", "closed", "all"]
   @valid_sort_options ["repository", "updated", "created"]
 
@@ -78,16 +76,24 @@ defmodule RegistryManager.Commands.PrStatus do
 
   # プライベート関数
 
-  defp validate_format(format) when format in @valid_formats, do: {:ok, format}
-
-  defp validate_format(format),
-    do: {:error, "Invalid format: #{format}. Valid formats: #{Enum.join(@valid_formats, ", ")}"}
+  defp validate_format(format) do
+    if format in Spec.output_formats() do
+      {:ok, format}
+    else
+      {:error,
+       "Invalid format: #{format}. Valid formats: #{Enum.join(Spec.output_formats(), ", ")}"}
+    end
+  end
 
   defp validate_type(nil), do: {:ok, nil}
-  defp validate_type(type) when type in @valid_types, do: {:ok, type}
 
-  defp validate_type(type),
-    do: {:error, "Invalid type: #{type}. Valid types: #{Enum.join(@valid_types, ", ")}"}
+  defp validate_type(type) do
+    if type in Spec.repo_types() do
+      {:ok, type}
+    else
+      {:error, "Invalid type: #{type}. Valid types: #{Enum.join(Spec.repo_types(), ", ")}"}
+    end
+  end
 
   defp validate_state(state) when state in @valid_states, do: {:ok, state}
 
