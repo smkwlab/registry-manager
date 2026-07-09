@@ -253,17 +253,22 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 キャッシュ管理を行います。
 
 ```bash
-./registry-manager cache SUBCOMMAND [OPTIONS]
+./registry-manager cache SUBCOMMAND [REPO_NAME] [OPTIONS]
 ```
 
 **サブコマンド:**
 - `status` - キャッシュ状態の確認
 - `clear` - キャッシュのクリア
+- `refresh` - キャッシュの再取得
+
+リポジトリ名を指定すると、そのリポジトリのキャッシュだけを対象にします。
 
 **使用例:**
 ```bash
 ./registry-manager cache status
 ./registry-manager cache clear
+./registry-manager cache status k21rs001-sotsuron
+./registry-manager cache clear k21rs001-sotsuron
 ```
 
 ### migrate コマンド
@@ -306,7 +311,15 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 # 特定リポジトリの検証
 ./registry-manager validate k21rs001-sotsuron
+
+# JSON 形式で出力
+./registry-manager validate --format json
+
+# 件別の検証結果を表示
+./registry-manager validate --verbose
 ```
+
+レガシー形式のエントリが検出された場合、移行は `migrate` コマンドで行います。
 
 ## 応用的な使用例
 

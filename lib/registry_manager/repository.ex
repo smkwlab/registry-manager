@@ -604,23 +604,6 @@ defmodule RegistryManager.Repository do
     end
   end
 
-  @doc """
-  全データの整合性を検証
-  """
-  def validate_all_data(opts \\ []) do
-    if opts[:dry_run] do
-      {:ok, "[DRY-RUN] データ整合性検証をスキップ"}
-    else
-      case DataStore.get_all_entries() do
-        {:ok, current_data} ->
-          ErrorHandler.handle_validation_result(Validation.validate_all_data(current_data))
-
-        {:error, reason} ->
-          ErrorHandler.handle_github_api_error({:error, reason})
-      end
-    end
-  end
-
   # 推論関連のプライベート関数
 
   defp infer_repository_data(repo_name, opts) do

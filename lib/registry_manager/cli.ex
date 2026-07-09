@@ -11,6 +11,7 @@ defmodule RegistryManager.CLI do
   alias RegistryManager.Commands.Migrate
   alias RegistryManager.Commands.PropagateWorkflow
   alias RegistryManager.Commands.PrStatus
+  alias RegistryManager.Commands.Validate
   alias RegistryManager.Repository
 
   # テスト用の関数（通常時は System.halt と IO.puts を使用）
@@ -118,9 +119,9 @@ defmodule RegistryManager.CLI do
   # コマンドエイリアスの正規化
   defp normalize_command(["rm" | args]), do: {"remove", args}
   defp normalize_command(["ls" | args]), do: {"list", args}
-  defp normalize_command(["cache-status" | _]), do: {"cache-alias", ["status"]}
-  defp normalize_command(["cache-clear" | _]), do: {"cache-alias", ["clear"]}
-  defp normalize_command(["cache-refresh" | _]), do: {"cache-alias", ["refresh"]}
+  defp normalize_command(["cache-status" | args]), do: {"cache-alias", ["status" | args]}
+  defp normalize_command(["cache-clear" | args]), do: {"cache-alias", ["clear" | args]}
+  defp normalize_command(["cache-refresh" | args]), do: {"cache-alias", ["refresh" | args]}
   defp normalize_command([command | args]), do: {command, args}
   defp normalize_command(_), do: nil
 
@@ -145,8 +146,8 @@ defmodule RegistryManager.CLI do
   end
 
   # cache-*エイリアス専用パーサー
-  defp parse_cache_alias([command], opts) do
-    parse_cache_command_alias(command, opts)
+  defp parse_cache_alias(args, opts) do
+    parse_cache_command(args, opts)
   end
 
   defp parse_add_command([repo_name], opts) do
@@ -188,20 +189,21 @@ defmodule RegistryManager.CLI do
   defp parse_list_command([filter], opts), do: {:list, filter, opts}
   defp parse_list_command(_, _opts), do: :help
 
-  defp parse_validate_command([], opts), do: {:validate, nil, opts}
+  defp parse_validate_command([], opts), do: {:validate, [], opts}
+  defp parse_validate_command([repo_name], opts), do: {:validate, [repo_name], opts}
   defp parse_validate_command(_, _opts), do: :help
 
   defp parse_migrate_command([], opts), do: {:migrate, [], opts}
   defp parse_migrate_command([subcommand], opts), do: {:migrate, [subcommand], opts}
   defp parse_migrate_command(_, _opts), do: :help
 
-  defp parse_cache_command([subcommand], opts), do: {:cache, [subcommand], opts}
   defp parse_cache_command([], opts), do: {:cache, [], opts}
-  defp parse_cache_command(_, _opts), do: :help
+  defp parse_cache_command([subcommand], opts), do: {:cache, [subcommand], opts}
 
-  defp parse_cache_command_alias(subcommand, opts) do
-    parse_cache_command([subcommand], opts)
-  end
+  defp parse_cache_command([subcommand, repo_name], opts),
+    do: {:cache, [subcommand, repo_name], opts}
+
+  defp parse_cache_command(_, _opts), do: :help
 
   defp parse_infer_student_id_command([repo_name], opts) do
     {:infer_student_id, repo_name, opts}
@@ -283,8 +285,10 @@ defmodule RegistryManager.CLI do
           --from-template : テンプレートから最新ワークフローを適用してから伝播
           --dry-run : 実行せずに確認のみ
 
-      validate
-          全データの整合性を検証
+      validate [repo_name]
+          データの整合性を検証（全件または単一リポジトリ）
+          --format table|csv|json : 出力形式
+          -v, --verbose : 件別の検証結果を表示
 
       migrate [status|dry-run|execute]
           レジストリデータをv1からv4形式に移行
@@ -464,10 +468,10 @@ defmodule RegistryManager.CLI do
     end
   end
 
-  defp process_impl({:validate, _, opts}) do
+  defp process_impl({:validate, args, opts}) do
     if opts[:verbose], do: print_output("データ整合性検証を開始...")
 
-    case Repository.validate_all_data(opts) do
+    case Validate.run(args, opts) do
       {:ok, output} ->
         print_output(output)
         exit_with_code(0)

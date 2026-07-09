@@ -10,7 +10,7 @@ defmodule RegistryManager.Commands.Validate do
   - Protection status validation
   - Legacy format detection
 
-  Supports fixing certain issues automatically with --fix option.
+  Legacy-format migration is handled by the separate `migrate` command.
   """
 
   alias RegistryManager.{GitHubAPI, TimestampManager, Validation}
@@ -23,9 +23,7 @@ defmodule RegistryManager.Commands.Validate do
 
   ## Options
   - `verbose` (boolean): Show detailed validation information
-  - `fix` (boolean): Attempt to fix fixable issues
   - `format` (string): Output format (table, json, csv)
-  - `dry_run` (boolean): Show what would be fixed without making changes
 
   ## Test Parameters (for testing only)
   - `repositories` (map): Override repository data
@@ -85,7 +83,6 @@ defmodule RegistryManager.Commands.Validate do
 
   defp perform_validation(repositories, opts) do
     verbose = Keyword.get(opts, :verbose, false)
-    fix = Keyword.get(opts, :fix, false)
 
     results =
       repositories
@@ -104,11 +101,7 @@ defmodule RegistryManager.Commands.Validate do
       end)
       |> Enum.into(%{})
 
-    if fix do
-      fix_issues(results, repositories, opts)
-    else
-      {:ok, results}
-    end
+    {:ok, results}
   end
 
   defp validate_entry(repo_name, data) do
@@ -274,52 +267,6 @@ defmodule RegistryManager.Commands.Validate do
     end
   end
 
-  defp fix_issues(validation_results, repositories, opts) do
-    # デフォルトの dry_run はテストパラメータで明示的に指定されない限り true
-    dry_run = Keyword.get(opts, :dry_run, not Keyword.get(opts, :test_mode, false))
-    test_mode = Keyword.get(opts, :test_mode, false)
-
-    fixable =
-      validation_results
-      |> Enum.filter(fn {_name, result} ->
-        match?({:legacy, _}, result)
-      end)
-
-    if Enum.empty?(fixable) do
-      {:ok, validation_results}
-    else
-      if dry_run do
-        {:ok, Map.put(validation_results, :fix_preview, fixable)}
-      else
-        fixed_results = apply_fixes(fixable, repositories, test_mode)
-        {:ok, Map.put(validation_results, :fixed, fixed_results)}
-      end
-    end
-  end
-
-  defp apply_fixes(fixable_entries, repositories, test_mode) do
-    Enum.map(fixable_entries, fn {repo_name, {:legacy, _warnings}} ->
-      data = Map.get(repositories, repo_name)
-
-      # レガシー形式を新形式に変換
-      migrated_data = TimestampManager.migrate_legacy_timestamps(data)
-
-      if test_mode do
-        # テストモードでは実際の更新はしない
-        {repo_name, :migrated}
-      else
-        # 実際のGitHub APIで更新
-        :ok = update_repository_data(repo_name, migrated_data)
-        {repo_name, :migrated}
-      end
-    end)
-  end
-
-  defp update_repository_data(_repo_name, _data) do
-    # GitHub API経由での更新（将来実装）
-    :ok
-  end
-
   defp format_results(validation_results, opts, _test_params) do
     format = Keyword.get(opts, :format, "table")
 
@@ -331,23 +278,14 @@ defmodule RegistryManager.Commands.Validate do
     end
   end
 
-  defp format_table_output(validation_results, opts) do
-    fix_preview = Map.get(validation_results, :fix_preview, [])
-    fixed = Map.get(validation_results, :fixed, [])
-
-    # fix_preview と fixed を除いた実際の検証結果のみを処理
-    actual_results =
-      validation_results
-      |> Map.drop([:fix_preview, :fixed])
-
-    stats = calculate_stats(actual_results)
+  defp format_table_output(validation_results, _opts) do
+    stats = calculate_stats(validation_results)
 
     header = build_validation_header(stats)
-    details = build_validation_details(actual_results, stats)
-    fix_info = build_fix_info(fixed, fix_preview, opts)
+    details = build_validation_details(validation_results, stats)
     summary = build_validation_summary(stats)
 
-    {:ok, header <> details <> fix_info <> summary}
+    {:ok, header <> details <> summary}
   end
 
   defp build_validation_header(stats) do
@@ -367,19 +305,6 @@ defmodule RegistryManager.Commands.Validate do
       format_issues(actual_results)
     else
       ""
-    end
-  end
-
-  defp build_fix_info(fixed, fix_preview, opts) do
-    cond do
-      not Enum.empty?(fixed) ->
-        format_fixed_issues(fixed)
-
-      not Enum.empty?(fix_preview) ->
-        format_fixable_issues(fix_preview, Keyword.get(opts, :dry_run, true))
-
-      true ->
-        ""
     end
   end
 
@@ -440,41 +365,6 @@ defmodule RegistryManager.Commands.Validate do
     Enum.join(sections, "\n")
   end
 
-  defp format_fixable_issues(fixable, dry_run) do
-    header = "\nFixable Issues:\n"
-
-    items =
-      Enum.map(fixable, fn {name, {:legacy, _}} ->
-        "  #{name}: Legacy format can be migrated"
-      end)
-
-    footer =
-      if dry_run do
-        "\n\nDry run mode - no changes made"
-      else
-        ""
-      end
-
-    header <> Enum.join(items, "\n") <> footer
-  end
-
-  defp format_fixed_issues(fixed) do
-    header = "\nFixed Issues:\n"
-
-    items =
-      Enum.map(fixed, fn {name, status} ->
-        case status do
-          :migrated -> "  ✅ Migrated legacy format: #{name}"
-          {:error, reason} -> "  ❌ Failed to fix #{name}: #{reason}"
-        end
-      end)
-
-    success_count = Enum.count(fixed, fn {_name, status} -> status == :migrated end)
-    footer = "\n\n#{success_count} issue(s) fixed"
-
-    header <> Enum.join(items, "\n") <> footer
-  end
-
   defp format_single_result(repo_name, result, opts) do
     with {:ok, repositories} <- get_repositories(Keyword.get(opts, :test_params, [])),
          {:ok, repo_data} <- get_single_repository(repositories, repo_name) do
@@ -508,21 +398,17 @@ defmodule RegistryManager.Commands.Validate do
   end
 
   defp format_json_output(validation_results, _opts) do
-    actual_results =
-      validation_results
-      |> Map.drop([:fix_preview, :fixed])
-
-    stats = calculate_stats(actual_results)
+    stats = calculate_stats(validation_results)
 
     errors =
-      actual_results
+      validation_results
       |> Enum.filter(fn {_name, result} -> match?({:invalid, _}, result) end)
       |> Enum.map(fn {name, {:invalid, errors}} ->
         %{"repository" => name, "errors" => errors}
       end)
 
     legacy =
-      actual_results
+      validation_results
       |> Enum.filter(fn {_name, result} -> match?({:legacy, _}, result) end)
       |> Enum.map(fn {name, {:legacy, warnings}} ->
         %{"repository" => name, "warnings" => warnings}
@@ -544,14 +430,10 @@ defmodule RegistryManager.Commands.Validate do
   end
 
   defp format_csv_output(validation_results, _opts) do
-    actual_results =
-      validation_results
-      |> Map.drop([:fix_preview, :fixed])
-
     header = "repository,status,issues"
 
     rows =
-      actual_results
+      validation_results
       |> Enum.map(fn {name, result} ->
         {status, issues} =
           case result do

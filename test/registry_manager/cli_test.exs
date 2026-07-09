@@ -125,12 +125,31 @@ defmodule RegistryManager.CLITest do
 
     test "parses validate command" do
       result = CLI.parse_command(["validate"], [])
-      assert {:validate, nil, []} = result
+      assert {:validate, [], []} = result
+    end
+
+    test "parses validate command with a repository name" do
+      result = CLI.parse_command(["validate", "k21rs001-sotsuron"], [])
+      assert {:validate, ["k21rs001-sotsuron"], []} = result
+    end
+
+    test "returns help for validate with too many arguments" do
+      assert :help = CLI.parse_command(["validate", "a", "b"], [])
+    end
+
+    test "parses cache subcommand with a repository name" do
+      result = CLI.parse_command(["cache", "status", "k21rs001-sotsuron"], [])
+      assert {:cache, ["status", "k21rs001-sotsuron"], []} = result
     end
 
     test "parses cache-status command (hyphenated form)" do
       result = CLI.parse_command(["cache-status"], [])
       assert {:cache, ["status"], []} = result
+    end
+
+    test "parses cache-status command with a repository name" do
+      result = CLI.parse_command(["cache-status", "k21rs001-sotsuron"], [])
+      assert {:cache, ["status", "k21rs001-sotsuron"], []} = result
     end
 
     test "parses cache-clear command (hyphenated form)" do
@@ -259,15 +278,22 @@ defmodule RegistryManager.CLITest do
     end
 
     test "validate command execution" do
-      parsed_command = {:validate, nil, []}
+      parsed_command = {:validate, [], []}
 
       result = run_cli_process(parsed_command)
 
-      # Validate コマンドは正常実行される
+      # Validate コマンドは正常実行され、詳細な検証レポートを出力する
       assert_success_exit(result)
-      # コマンドの出力があることを確認
-      output = Application.get_env(:registry_manager, :test_output, "")
-      assert is_binary(output)
+      assert_output_contains("Validation Report")
+    end
+
+    test "validate command execution for a single repository" do
+      parsed_command = {:validate, ["k21rs001-sotsuron"], []}
+
+      result = run_cli_process(parsed_command)
+
+      assert_success_exit(result)
+      assert_output_contains("Validation Report for k21rs001-sotsuron")
     end
 
     test "update command with invalid data" do
