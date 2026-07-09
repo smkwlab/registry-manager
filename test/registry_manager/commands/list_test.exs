@@ -298,7 +298,7 @@ defmodule RegistryManager.Commands.ListTest do
     test "sorts by time with --sort-by-time --show-registry-updated (newest first)", %{
       repositories: repositories
     } do
-      opts = [sort_by_time: true, show_registry_updated: true]
+      opts = [sort: "time", show_registry_updated: true]
 
       {:ok, output} = List.run([], opts, repositories: repositories)
 
@@ -331,7 +331,7 @@ defmodule RegistryManager.Commands.ListTest do
     end
 
     test "combines time sort and reverse", %{repositories: repositories} do
-      opts = [sort_by_time: true, reverse: true, show_registry_updated: true]
+      opts = [sort: "time", reverse: true, show_registry_updated: true]
 
       {:ok, output} = List.run([], opts, repositories: repositories)
 
@@ -363,7 +363,7 @@ defmodule RegistryManager.Commands.ListTest do
         }
       }
 
-      opts = [sort_by_time: true, show_registry_updated: true]
+      opts = [sort: "time", show_registry_updated: true]
 
       {:ok, output} = List.run([], opts, repositories: invalid_timestamp_repositories)
 
@@ -403,7 +403,7 @@ defmodule RegistryManager.Commands.ListTest do
         }
       }
 
-      opts = [sort_by_time: true, show_registry_updated: true]
+      opts = [sort: "time", show_registry_updated: true]
 
       {:ok, output} = List.run([], opts, repositories: same_timestamp_repositories)
 
@@ -492,7 +492,7 @@ defmodule RegistryManager.Commands.ListTest do
       }
 
       # -t -a: 活動時刻でソート
-      opts = [sort_by_time: true, activity: true]
+      opts = [sort: "time", activity: true]
 
       {:ok, output} =
         List.run([], opts,
@@ -579,7 +579,7 @@ defmodule RegistryManager.Commands.ListTest do
       }
 
       # -t -o: 所有者活動時刻でソート
-      opts = [sort_by_time: true, owner_activity: true]
+      opts = [sort: "time", owner_activity: true]
 
       {:ok, output} =
         List.run([], opts,

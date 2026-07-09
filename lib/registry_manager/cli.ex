@@ -172,9 +172,18 @@ defmodule RegistryManager.CLI do
 
   defp parse_protect_command(_, _opts), do: :help
 
-  defp parse_list_command([], opts), do: {:list, nil, opts}
-  defp parse_list_command([filter], opts), do: {:list, filter, opts}
+  defp parse_list_command([], opts), do: {:list, nil, normalize_list_sort(opts)}
+  defp parse_list_command([filter], opts), do: {:list, filter, normalize_list_sort(opts)}
   defp parse_list_command(_, _opts), do: :help
+
+  # -t は --sort time の短縮（明示的な --sort が優先）
+  defp normalize_list_sort(opts) do
+    if opts[:t] do
+      opts |> Keyword.delete(:t) |> Keyword.put_new(:sort, "time")
+    else
+      opts
+    end
+  end
 
   defp parse_validate_command([], opts), do: {:validate, [], opts}
   defp parse_validate_command([repo_name], opts), do: {:validate, [repo_name], opts}

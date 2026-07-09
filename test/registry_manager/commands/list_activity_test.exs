@@ -397,7 +397,7 @@ defmodule RegistryManager.Commands.ListActivityTest do
         "k21rs003-ise-report1" => %{"last_activity" => "2025-07-09T16:45:00.000Z"}
       }
 
-      opts = [long: true, activity: true, sort_by_time: true]
+      opts = [long: true, activity: true, sort: "time"]
 
       {:ok, output} =
         List.run([], opts,
