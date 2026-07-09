@@ -206,6 +206,16 @@ defmodule RegistryManager.CLITest do
       ])
     end
 
+    test "help does not mention the removed old-form add command" do
+      result = run_cli_process(:help)
+
+      assert_success_exit(result)
+
+      output = Application.get_env(:registry_manager, :test_output, "")
+      refute output =~ "<status> [stage]"
+      refute output =~ "非推奨"
+    end
+
     test "error handling in add command" do
       # 無効なリポジトリ名でテスト
       parsed_command = {:add_explicit, {"", "k21rs001", "sotsuron"}, []}

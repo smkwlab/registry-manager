@@ -404,6 +404,13 @@ defmodule RegistryManager.Commands.PrStatusTest do
       {:ok, opts} = PrStatus.validate_options(review_requested: true, sort: "repository")
       assert opts[:sort] == "repository"
     end
+
+    test "validated opts contain exactly the consumed keys" do
+      {:ok, opts} = PrStatus.validate_options([])
+
+      assert Enum.sort(Keyword.keys(opts)) ==
+               Enum.sort([:format, :type, :state, :no_cache, :sort, :reverse, :review_requested])
+    end
   end
 
   # Issue #115: New tests for --review-requested and --sort options
