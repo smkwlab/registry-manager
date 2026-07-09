@@ -21,9 +21,6 @@ defmodule RegistryManager.Commands.PrStatus do
   alias RegistryManager.GitHubAPI
   alias RegistryManager.GitHubAPI.{Client, Parser}
 
-  @valid_states ["open", "closed", "all"]
-  @valid_sort_options ["repository", "updated", "created"]
-
   # Issue #120: Cache configuration
   @cache_category "pr-status"
   @default_cache_ttl_minutes 5
@@ -95,16 +92,23 @@ defmodule RegistryManager.Commands.PrStatus do
     end
   end
 
-  defp validate_state(state) when state in @valid_states, do: {:ok, state}
-
-  defp validate_state(state),
-    do: {:error, "Invalid state: #{state}. Valid states: #{Enum.join(@valid_states, ", ")}"}
+  defp validate_state(state) do
+    if state in Spec.pr_states() do
+      {:ok, state}
+    else
+      {:error, "Invalid state: #{state}. Valid states: #{Enum.join(Spec.pr_states(), ", ")}"}
+    end
+  end
 
   defp validate_sort(nil), do: {:ok, nil}
-  defp validate_sort(sort) when sort in @valid_sort_options, do: {:ok, sort}
 
-  defp validate_sort(sort),
-    do: {:error, "Invalid sort: #{sort}. Valid options: #{Enum.join(@valid_sort_options, ", ")}"}
+  defp validate_sort(sort) do
+    if sort in Spec.pr_sort_keys() do
+      {:ok, sort}
+    else
+      {:error, "Invalid sort: #{sort}. Valid options: #{Enum.join(Spec.pr_sort_keys(), ", ")}"}
+    end
+  end
 
   defp get_repositories(test_params) do
     if Keyword.has_key?(test_params, :repositories) do

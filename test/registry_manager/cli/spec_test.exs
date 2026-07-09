@@ -8,6 +8,11 @@ defmodule RegistryManager.CLI.SpecTest do
       assert Spec.repo_types() == ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
     end
 
+    test "pr states and sort keys are exposed as canonical lists" do
+      assert Spec.pr_states() == ["open", "closed", "all"]
+      assert Spec.pr_sort_keys() == ["repository", "updated", "created"]
+    end
+
     test "every CLI dispatch command has a spec entry" do
       for name <- RegistryManager.CLI.known_commands() do
         assert Spec.find_command(name), "no spec for command #{name}"
@@ -87,6 +92,12 @@ defmodule RegistryManager.CLI.SpecTest do
     test "propagate-workflow --type is enum-validated" do
       assert :ok = Spec.validate_opts("propagate-workflow", all: true, type: "thesis")
       assert {:error, _} = Spec.validate_opts("propagate-workflow", all: true, type: "bogus")
+    end
+
+    test "reports all violations at once" do
+      assert {:error, message} = Spec.validate_opts("list", type: "bogus", state: "open")
+      assert message =~ "--type"
+      assert message =~ "--state"
     end
 
     test "unknown command passes through (dispatch handles it)" do

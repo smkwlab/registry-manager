@@ -18,6 +18,12 @@ defmodule RegistryManager.CLI.Spec do
   @doc "出力形式の正準リスト（--format の enum）"
   def output_formats, do: @output_formats
 
+  @doc "PR 状態の正準リスト（--state の enum）"
+  def pr_states, do: @pr_states
+
+  @doc "PR ソートキーの正準リスト（--sort の enum）"
+  def pr_sort_keys, do: @pr_sort_keys
+
   # オプションカタログ: 名前 → 定義。
   # values が nil 以外なら enum としてパース時に検証される。
   @option_catalog %{
@@ -267,20 +273,25 @@ defmodule RegistryManager.CLI.Spec do
   end
 
   defp check_opts(command_name, opts, allowed) do
-    Enum.find_value(opts, :ok, fn {name, value} ->
-      cond do
-        not MapSet.member?(allowed, name) ->
-          {:error, "--#{render_name(name)} は #{command_name} コマンドでは使えません"}
+    case Enum.flat_map(opts, &opt_violation(&1, command_name, allowed)) do
+      [] -> :ok
+      messages -> {:error, Enum.join(messages, "\n")}
+    end
+  end
 
-        enum_violation?(name, value) ->
-          %{values: values} = @option_catalog[name]
+  defp opt_violation({name, value}, command_name, allowed) do
+    cond do
+      not MapSet.member?(allowed, name) ->
+        ["--#{render_name(name)} は #{command_name} コマンドでは使えません"]
 
-          {:error, "--#{render_name(name)} の値が不正です: #{value}（有効な値: #{Enum.join(values, ", ")}）"}
+      enum_violation?(name, value) ->
+        %{values: values} = @option_catalog[name]
 
-        true ->
-          nil
-      end
-    end)
+        ["--#{render_name(name)} の値が不正です: #{value}（有効な値: #{Enum.join(values, ", ")}）"]
+
+      true ->
+        []
+    end
   end
 
   defp enum_violation?(name, value) do
