@@ -161,18 +161,6 @@ defmodule RegistryManager.RepositoryPersistenceTest do
     end
   end
 
-  describe "validate_all_data/1" do
-    test "runs validation over the registry data" do
-      assert {:ok, output} = Repository.validate_all_data([])
-      assert is_binary(output)
-    end
-
-    test "dry-run skips validation" do
-      assert {:ok, message} = Repository.validate_all_data(dry_run: true)
-      assert message =~ "[DRY-RUN]"
-    end
-  end
-
   describe "get_github_username_for_add/3" do
     test "returns username found in CSV" do
       assert Repository.get_github_username_for_add("k21rs001-sotsuron", "k21rs001", []) ==

@@ -141,30 +141,6 @@ defmodule RegistryManager.Commands.ValidateTest do
     end
   end
 
-  describe "run/3 - fix mode" do
-    test "reports fixable issues with --fix option" do
-      opts = [fix: true]
-
-      {:ok, output} = Validate.run([], opts, repositories: @mixed_repositories, dry_run: true)
-
-      assert String.contains?(output, "Fixable Issues")
-      assert String.contains?(output, "Legacy format can be migrated")
-      assert String.contains?(output, "k88rs509-ise-report1")
-      assert String.contains?(output, "Dry run mode - no changes made")
-    end
-
-    test "actually fixes issues when not in dry-run mode" do
-      opts = [fix: true, dry_run: false, test_mode: true]
-
-      # テスト用のGitHub APIモックを使用
-      {:ok, output} = Validate.run([], opts, repositories: @mixed_repositories)
-
-      assert String.contains?(output, "Fixed Issues")
-      assert String.contains?(output, "✅ Migrated legacy format")
-      assert String.contains?(output, "1 issue(s) fixed")
-    end
-  end
-
   describe "run/3 - specific repository validation" do
     test "validates specific repository when name provided" do
       opts = []

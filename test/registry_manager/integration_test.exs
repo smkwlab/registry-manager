@@ -1,7 +1,7 @@
 defmodule RegistryManager.IntegrationTest do
   use ExUnit.Case, async: false
 
-  alias RegistryManager.Commands.{Cache, List, Migrate}
+  alias RegistryManager.Commands.{Cache, List, Migrate, Validate}
   alias RegistryManager.GitHubAPI
   alias RegistryManager.Repository
 
@@ -43,7 +43,7 @@ defmodule RegistryManager.IntegrationTest do
 
     test "validate data integrity across operations" do
       # Run validation
-      validation_result = Repository.validate_all_data([])
+      validation_result = Validate.run([], [])
       assert {:ok, _output} = validation_result
     end
   end
