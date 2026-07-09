@@ -11,6 +11,7 @@ defmodule RegistryManager.CLI.Spec do
   @output_formats ["table", "csv", "json"]
   @pr_states ["open", "closed", "all"]
   @pr_sort_keys ["repository", "updated", "created"]
+  @list_sort_keys ["name", "time"]
 
   @doc "リポジトリタイプの正準リスト（--type の enum）"
   def repo_types, do: @repo_types
@@ -21,8 +22,11 @@ defmodule RegistryManager.CLI.Spec do
   @doc "PR 状態の正準リスト（--state の enum）"
   def pr_states, do: @pr_states
 
-  @doc "PR ソートキーの正準リスト（--sort の enum）"
+  @doc "PR ソートキーの正準リスト（pr-status の --sort の enum）"
   def pr_sort_keys, do: @pr_sort_keys
+
+  @doc "list のソートキーの正準リスト（list の --sort の enum）"
+  def list_sort_keys, do: @list_sort_keys
 
   # オプションカタログ: 名前 → 定義。
   # values が nil 以外なら enum としてパース時に検証される。
@@ -59,7 +63,9 @@ defmodule RegistryManager.CLI.Spec do
     no_cache: %{type: :boolean, alias: nil, values: nil, doc: "キャッシュを使用しない"},
     format: %{type: :string, alias: nil, values: @output_formats, doc: "出力形式"},
     type: %{type: :string, alias: :T, values: @repo_types, doc: "リポジトリタイプでフィルタ"},
-    sort_by_time: %{type: :boolean, alias: :t, values: nil, doc: "時刻でソート（新しい順）"},
+    # alias: :t が -t を受理させる（OptionParser は aliases 経由でのみ 1 文字形を解釈する）。
+    # 名前と alias が同一なのは、長い形 --t を公開しない短縮専用オプションのため
+    t: %{type: :boolean, alias: :t, values: nil, doc: "--sort time の短縮"},
     reverse: %{type: :boolean, alias: :r, values: nil, doc: "ソート順を反転"},
     show_student_id: %{type: :boolean, alias: :s, values: nil, doc: "学生IDを表示"},
     add_owner: %{type: :string, alias: nil, values: nil, doc: "オーナーを追加"},
@@ -148,7 +154,8 @@ defmodule RegistryManager.CLI.Spec do
         :no_cache,
         :format,
         :type,
-        :sort_by_time,
+        {:sort, %{values: @list_sort_keys, doc: "ソートキー（デフォルト: name）"}},
+        :t,
         :reverse,
         :show_student_id
       ],
@@ -156,7 +163,7 @@ defmodule RegistryManager.CLI.Spec do
         "list",
         "list --long",
         "list --type wr --long",
-        "list --activity --type sotsuron --long",
+        "list --sort time -r",
         "list --format csv"
       ]
     },
@@ -234,11 +241,27 @@ defmodule RegistryManager.CLI.Spec do
     end)
   end
 
-  @doc "コマンドが使えるオプション定義（グローバル含む）"
-  def options_for(%{options: names}) do
-    Enum.map(@global_option_names ++ names, fn name ->
-      Map.put(@option_catalog[name], :name, name)
-    end)
+  @doc """
+  コマンドが使えるオプション定義（グローバル含む）。
+
+  options の要素は名前(atom)か {名前, 上書きマップ} で、
+  上書きマップでコマンド固有の values / doc を差し替えられる。
+  """
+  def options_for(%{options: entries}) do
+    Enum.map(@global_option_names ++ entries, &resolve_option/1)
+  end
+
+  defp resolve_option(name) when is_atom(name) do
+    @option_catalog
+    |> Map.fetch!(name)
+    |> Map.put(:name, name)
+  end
+
+  defp resolve_option({name, override}) do
+    @option_catalog
+    |> Map.fetch!(name)
+    |> Map.merge(override)
+    |> Map.put(:name, name)
   end
 
   @doc "OptionParser の strict リスト（全オプションの和集合）"
@@ -255,49 +278,45 @@ defmodule RegistryManager.CLI.Spec do
   def allowed_for(name) do
     case find_command(name) do
       nil -> nil
-      command -> MapSet.new(@global_option_names ++ command.options)
+      command -> MapSet.new(options_for(command), & &1.name)
     end
   end
 
   @doc """
   パース済みオプションをコマンド定義に対して検証する。
 
-  コマンドに属さないオプションと enum 違反をエラーにする。
-  未知のコマンドは :ok（dispatch 側が :help に落とす）。
+  コマンドに属さないオプションと enum 違反（コマンド固有の values を含む）を
+  エラーにする。コマンド名が nil または未知の場合は :ok（dispatch 側が
+  :help に落とす）。
   """
   def validate_opts(command_name, opts) do
-    case allowed_for(command_name) do
+    case find_command(command_name) do
       nil -> :ok
-      allowed -> check_opts(command_name, opts, allowed)
+      command -> check_opts(command.name, opts, Map.new(options_for(command), &{&1.name, &1}))
     end
   end
 
-  defp check_opts(command_name, opts, allowed) do
-    case Enum.flat_map(opts, &opt_violation(&1, command_name, allowed)) do
+  defp check_opts(command_name, opts, defs) do
+    case Enum.flat_map(opts, &opt_violation(&1, command_name, defs)) do
       [] -> :ok
       messages -> {:error, Enum.join(messages, "\n")}
     end
   end
 
-  defp opt_violation({name, value}, command_name, allowed) do
-    cond do
-      not MapSet.member?(allowed, name) ->
+  defp opt_violation({name, value}, command_name, defs) do
+    case defs[name] do
+      nil ->
         ["--#{render_name(name)} は #{command_name} コマンドでは使えません"]
 
-      enum_violation?(name, value) ->
-        %{values: values} = @option_catalog[name]
+      %{values: values} when is_list(values) ->
+        if value in values do
+          []
+        else
+          ["--#{render_name(name)} の値が不正です: #{value}（有効な値: #{Enum.join(values, ", ")}）"]
+        end
 
-        ["--#{render_name(name)} の値が不正です: #{value}（有効な値: #{Enum.join(values, ", ")}）"]
-
-      true ->
+      _ ->
         []
-    end
-  end
-
-  defp enum_violation?(name, value) do
-    case @option_catalog[name] do
-      %{values: values} when is_list(values) -> value not in values
-      _ -> false
     end
   end
 
@@ -344,7 +363,11 @@ defmodule RegistryManager.CLI.Spec do
 
   defp render_command_section(command) do
     usage_lines = Enum.map_join(command.usage, "\n", &"  #{&1}")
-    option_names = Enum.map_join(command.options, " ", &"--#{render_name(&1)}")
+
+    option_names =
+      Enum.map_join(command.options, " ", fn entry ->
+        entry |> resolve_option() |> render_option_name()
+      end)
 
     option_line =
       if command.options == [] do
@@ -357,12 +380,30 @@ defmodule RegistryManager.CLI.Spec do
   end
 
   defp render_options(options) do
-    Enum.map_join(options, "\n", fn option ->
-      short = if option.alias, do: "-#{option.alias}, ", else: "    "
-      value = if option.type == :string, do: " #{render_values(option)}", else: ""
-      "  #{short}--#{render_name(option.name)}#{value}  #{option.doc}"
-    end)
+    Enum.map_join(options, "\n", &render_option_line/1)
   end
+
+  defp render_option_line(option) do
+    value = if option.type == :string, do: " #{render_values(option)}", else: ""
+
+    if single_char_name?(option.name) do
+      "  -#{option.name}#{value}  #{option.doc}"
+    else
+      short = if option.alias, do: "-#{option.alias}, ", else: "    "
+      "  #{short}--#{render_name(option.name)}#{value}  #{option.doc}"
+    end
+  end
+
+  # 1 文字名のオプション（:t など）は短縮形のみを持つ
+  defp render_option_name(option) do
+    if single_char_name?(option.name) do
+      "-#{option.name}"
+    else
+      "--#{render_name(option.name)}"
+    end
+  end
+
+  defp single_char_name?(name), do: byte_size(Atom.to_string(name)) == 1
 
   defp render_values(%{values: values}) when is_list(values), do: Enum.join(values, "|")
   defp render_values(_), do: "VALUE"
@@ -374,9 +415,7 @@ defmodule RegistryManager.CLI.Spec do
   end
 
   defp global_options do
-    Enum.map(@global_option_names, fn name ->
-      Map.put(@option_catalog[name], :name, name)
-    end)
+    Enum.map(@global_option_names, &resolve_option/1)
   end
 
   defp render_name(name), do: String.replace(Atom.to_string(name), "_", "-")

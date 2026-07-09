@@ -218,6 +218,40 @@ defmodule RegistryManager.CLITest do
     end
   end
 
+  describe "unified sort vocabulary" do
+    test "list accepts --sort time with reverse" do
+      assert {:list, nil, opts} = CLI.parse_args(["list", "--sort", "time", "-r"])
+      assert opts[:sort] == "time"
+      assert opts[:reverse] == true
+    end
+
+    test "-t is shorthand for --sort time" do
+      assert {:list, nil, opts} = CLI.parse_args(["list", "-t"])
+      assert opts[:sort] == "time"
+      refute Keyword.has_key?(opts, :t)
+    end
+
+    test "explicit --sort wins over -t" do
+      assert {:list, nil, opts} = CLI.parse_args(["list", "-t", "--sort", "name"])
+      assert opts[:sort] == "name"
+    end
+
+    test "--sort-by-time is removed" do
+      assert {:error, message} = CLI.parse_args(["list", "--sort-by-time"])
+      assert message =~ "--sort-by-time"
+    end
+
+    test "list rejects pr-status sort keys" do
+      assert {:error, message} = CLI.parse_args(["list", "--sort", "updated"])
+      assert message =~ "updated"
+    end
+
+    test "pr-status sort surface is unchanged" do
+      assert {:pr_status, nil, opts} = CLI.parse_args(["pr-status", "--sort", "updated", "-r"])
+      assert opts[:sort] == "updated"
+    end
+  end
+
   describe "edge cases" do
     test "empty arguments default to help" do
       result = CLI.parse_args([])

@@ -44,7 +44,7 @@ defmodule RegistryManager.Commands.List do
   - `show_protection` (boolean): Show protection status column
   - `show_student_id` (boolean): Show student ID column
   - `no_names` (boolean): Hide student names
-  - `sort_by_time` (boolean): Sort by timestamp instead of name
+  - `sort` (string): Sort key, "name" (default) or "time" (CLI の -t は "time" の短縮)
   - `reverse` (boolean): Reverse sort order
   - `no_cache` (boolean): Bypass cache for activity information
 
@@ -132,14 +132,14 @@ defmodule RegistryManager.Commands.List do
   end
 
   defp sort_repositories(repositories, opts) do
-    sort_by_time = Keyword.get(opts, :sort_by_time, false)
+    sort_by_time = Keyword.get(opts, :sort) == "time"
     activity = Keyword.get(opts, :activity, false)
     owner_activity = Keyword.get(opts, :owner_activity, false)
     show_registry_updated = Keyword.get(opts, :show_registry_updated, false)
     reverse = Keyword.get(opts, :reverse, false)
 
     # ソート種別を決定（Issue #107: デフォルトはLast Activityでソート）
-    # -t が指定された場合のみ時刻ソートを有効化
+    # --sort time（短縮: -t）が指定された場合のみ時刻ソートを有効化
     sort_type =
       cond do
         # -t --owner-activity

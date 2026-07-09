@@ -40,6 +40,16 @@ defmodule RegistryManager.CLI.SpecTest do
       assert Spec.find_command("unknown") == nil
     end
 
+    test "unknown option names in a command spec raise with the key" do
+      assert_raise KeyError, fn ->
+        Spec.options_for(%{options: [:nonexistent_option]})
+      end
+
+      assert_raise KeyError, fn ->
+        Spec.options_for(%{options: [{:nonexistent_option, %{values: ["x"]}}]})
+      end
+    end
+
     test "strict switches cover every option referenced by a command" do
       switch_names = Keyword.keys(Spec.strict_switches()) |> MapSet.new()
 
@@ -100,21 +110,39 @@ defmodule RegistryManager.CLI.SpecTest do
       assert message =~ "--state"
     end
 
+    test "sort keys are validated per command" do
+      assert :ok = Spec.validate_opts("list", sort: "time")
+      assert :ok = Spec.validate_opts("list", sort: "name")
+      assert {:error, message} = Spec.validate_opts("list", sort: "updated")
+      assert message =~ "name, time"
+
+      assert :ok = Spec.validate_opts("pr-status", sort: "updated")
+      assert {:error, _} = Spec.validate_opts("pr-status", sort: "time")
+    end
+
     test "unknown command passes through (dispatch handles it)" do
       assert :ok = Spec.validate_opts("unknown", format: "json")
     end
   end
 
   describe "help rendering" do
-    test "global help mentions every command and its long options" do
+    test "global help mentions every command and its options" do
       help = Spec.render_help()
 
       for command <- Spec.commands() do
         assert help =~ command.name
 
         for option <- Spec.options_for(command) do
-          assert help =~ "--#{String.replace(Atom.to_string(option.name), "_", "-")}",
-                 "help misses --#{option.name} of #{command.name}"
+          name = Atom.to_string(option.name)
+
+          rendered =
+            if String.length(name) == 1 do
+              "-#{name}"
+            else
+              "--#{String.replace(name, "_", "-")}"
+            end
+
+          assert help =~ rendered, "help misses #{rendered} of #{command.name}"
         end
       end
     end
