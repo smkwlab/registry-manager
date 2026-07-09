@@ -299,6 +299,8 @@ defmodule RegistryManager.Config do
   """
   @spec valid_registry_repo?(String.t()) :: boolean()
   def valid_registry_repo?(value) when is_binary(value) do
+    # [^/\s]+ がスラッシュを含まないため「/ をちょうど 1 つ含む」形式のみ許可
+    # （owner/repo/extra のような 3 セグメント以上は不一致）
     Regex.match?(~r{\A[^/\s]+/[^/\s]+\z}, value)
   end
 

@@ -291,6 +291,16 @@ defmodule RegistryManager.CLITest do
       assert Application.get_env(:registry_manager, :cli_overrides) == nil
       assert Application.get_env(:registry_manager, :config_path) == nil
     end
+
+    test "a run without override flags clears stale overrides" do
+      Application.put_env(:registry_manager, :cli_overrides, %{registry_repo: "stale/repo"})
+      Application.put_env(:registry_manager, :config_path, "/stale/path.yml")
+
+      assert {:list, nil, _opts} = CLI.parse_args(["list"])
+
+      assert Application.get_env(:registry_manager, :cli_overrides) == nil
+      assert Application.get_env(:registry_manager, :config_path) == nil
+    end
   end
 
   describe "edge cases" do

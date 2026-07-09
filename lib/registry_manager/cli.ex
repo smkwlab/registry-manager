@@ -110,12 +110,17 @@ defmodule RegistryManager.CLI do
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
 
+    # フラグ未指定時は削除し、前回実行の値が残留しないようにする
     if map_size(overrides) > 0 do
       Application.put_env(:registry_manager, :cli_overrides, overrides)
+    else
+      Application.delete_env(:registry_manager, :cli_overrides)
     end
 
     if opts[:config] do
       Application.put_env(:registry_manager, :config_path, opts[:config])
+    else
+      Application.delete_env(:registry_manager, :config_path)
     end
   end
 

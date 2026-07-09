@@ -275,6 +275,8 @@ defmodule RegistryManager.ConfigTest do
       on_exit(fn ->
         Application.delete_env(:registry_manager, :cli_overrides)
         Application.delete_env(:registry_manager, :config_path)
+        System.delete_env("REGISTRY_MANAGER_REGISTRY_REPO")
+        System.delete_env("REGISTRY_MANAGER_CACHE_TTL_HOURS")
         File.rm_rf!(dir)
       end)
 
