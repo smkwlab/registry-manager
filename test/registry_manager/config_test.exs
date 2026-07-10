@@ -266,6 +266,85 @@ defmodule RegistryManager.ConfigTest do
     end
   end
 
+  describe "precedence: CLI > env > user config > default (issue #38)" do
+    setup do
+      dir = Path.join(System.tmp_dir!(), "rm_precedence_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      path = Path.join(dir, "config.yml")
+
+      on_exit(fn ->
+        Application.delete_env(:registry_manager, :cli_overrides)
+        Application.delete_env(:registry_manager, :config_path)
+        System.delete_env("REGISTRY_MANAGER_REGISTRY_REPO")
+        System.delete_env("REGISTRY_MANAGER_CACHE_TTL_HOURS")
+        File.rm_rf!(dir)
+      end)
+
+      {:ok, path: path}
+    end
+
+    test "environment variables beat the user config file", %{path: path} do
+      File.write!(path, "registry_repo: file/repo\n")
+      System.put_env("REGISTRY_MANAGER_REGISTRY_REPO", "env/repo")
+
+      config = Config.load_config(path)
+
+      assert config.registry_repo == "env/repo"
+    end
+
+    test "cli overrides beat environment variables", %{path: path} do
+      File.write!(path, "registry_repo: file/repo\n")
+      System.put_env("REGISTRY_MANAGER_REGISTRY_REPO", "env/repo")
+      Application.put_env(:registry_manager, :cli_overrides, %{registry_repo: "cli/repo"})
+
+      config = Config.load_config(path)
+
+      assert config.registry_repo == "cli/repo"
+    end
+
+    test "user config file still beats defaults", %{path: path} do
+      File.write!(path, "github_org: fileorg\n")
+
+      config = Config.load_config(path)
+
+      assert config.github_org == "fileorg"
+    end
+
+    test "a single cache env var does not clobber file cache settings", %{path: path} do
+      File.write!(path, """
+      cache:
+        enabled: false
+        max_size_mb: 99
+      """)
+
+      System.put_env("REGISTRY_MANAGER_CACHE_TTL_HOURS", "5")
+
+      config = Config.load_config(path)
+
+      assert config.cache.enabled == false
+      assert config.cache.max_size_mb == 99
+      assert config.cache.ttl_hours == 5
+    end
+
+    test "config_path application env overrides the default path", %{path: path} do
+      File.write!(path, "registry_repo: viapath/repo\n")
+      Application.put_env(:registry_manager, :config_path, path)
+
+      config = Config.load_config()
+
+      assert config.registry_repo == "viapath/repo"
+    end
+  end
+
+  describe "valid_registry_repo?/1" do
+    test "accepts owner/repo and rejects other shapes" do
+      assert Config.valid_registry_repo?("owner/repo")
+      refute Config.valid_registry_repo?("owner")
+      refute Config.valid_registry_repo?("owner/repo/extra")
+      refute Config.valid_registry_repo?("owner /repo")
+    end
+  end
+
   describe "config file format (issue #18)" do
     test "default config path is config.yml" do
       assert String.ends_with?(Config.get_default_config_path(), "registry-manager/config.yml")

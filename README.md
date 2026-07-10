@@ -80,11 +80,13 @@ registry_repo: your-org/your-student-registry
 `REGISTRY_MANAGER_GITHUB_ORG` / `REGISTRY_MANAGER_REGISTRY_REPO` /
 `REGISTRY_MANAGER_CSV_PATH` / `REGISTRY_MANAGER_TEST_STUDENT_IDS`（カンマ区切り）
 
-優先順位は **設定ファイル > 環境変数 > デフォルト値** です（同じキーを両方で
-指定した場合は設定ファイルの値が使われます）。一般的な慣習
-（環境変数 > 設定ファイル、いわゆる 12-factor 流）とは逆ですが、
-管理者が明示的に書いた設定ファイルを、シェル環境に残った一時的な
-環境変数より優先する意図的な設計です。
+CLI からも一時的に上書きできます（全コマンド共通のグローバルフラグ）:
+`--registry-repo <owner/repo>` / `--org <org>` / `-c, --config <path>`
+
+優先順位は **CLI フラグ > 環境変数 > 設定ファイル > デフォルト値** です
+（[ECOSYSTEM.md の Tool Configuration Conventions](https://github.com/smkwlab/latex-ecosystem/blob/main/ECOSYSTEM.md) に準拠）。
+恒常的な設定は設定ファイルに置き、環境変数と CLI フラグは CI や検証時の
+一時的な上書きに使います。
 
 ### 3. ビルド
 
