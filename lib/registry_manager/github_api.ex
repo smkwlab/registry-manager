@@ -139,16 +139,26 @@ defmodule RegistryManager.GitHubAPI do
 
   # プライベート実装関数
 
+  # github_org が未設定（nil / 空）なら明示エラーにする（issue #45）。
+  # config は github_org を registry_repo の owner から導出するため、通常は
+  # registry_repo を設定していれば埋まる。どちらも未設定のまま学生リポジトリ操作を
+  # 呼んだ場合に、他組織への静かな誤対象（"/repo" への API 呼び出し）を防ぐ。
   @doc false
   defp build_full_repo_name(repo_name) do
-    config = Config.load_config()
-    "#{config.github_org}/#{repo_name}"
+    case Config.load_config().github_org do
+      org when org in [nil, ""] ->
+        {:error,
+         ~s|github_org is not configured. Set "github_org" (or "registry_repo") in | <>
+           "~/.config/registry-manager/config.yml, REGISTRY_MANAGER_GITHUB_ORG, or use --org."}
+
+      org ->
+        {:ok, "#{org}/#{repo_name}"}
+    end
   end
 
   defp get_repository_info_impl(repo_name) do
-    full_repo_name = build_full_repo_name(repo_name)
-
-    with {:ok, response} <- Client.get_repository_info(full_repo_name) do
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name),
+         {:ok, response} <- Client.get_repository_info(full_repo_name) do
       {:ok, response}
     end
   end
@@ -189,19 +199,18 @@ defmodule RegistryManager.GitHubAPI do
   end
 
   defp get_general_activity_impl(repo_name) do
-    full_repo_name = build_full_repo_name(repo_name)
-
-    with {:ok, response} <- Client.get_repository_info(full_repo_name),
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name),
+         {:ok, response} <- Client.get_repository_info(full_repo_name),
          {:ok, activity_time} <- Parser.extract_repository_activity(response) do
       {:ok, activity_time}
     end
   end
 
   defp get_owner_activity_impl(repo_name) do
-    full_repo_name = build_full_repo_name(repo_name)
-
     # 常にregistryデータから取得（リポジトリ名からの学生ID抽出は不可能）
-    get_owner_activity_from_registry(repo_name, full_repo_name)
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name) do
+      get_owner_activity_from_registry(repo_name, full_repo_name)
+    end
   end
 
   defp get_owner_activity_from_registry(repo_name, full_repo_name) do
@@ -309,9 +318,8 @@ defmodule RegistryManager.GitHubAPI do
   end
 
   defp get_actual_developer_impl(repo_name, opts) do
-    full_repo_name = build_full_repo_name(repo_name)
-
-    with {:ok, commits} <- Client.get_actual_developer(full_repo_name, opts),
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name),
+         {:ok, commits} <- Client.get_actual_developer(full_repo_name, opts),
          {:ok, developer} <-
            Parser.extract_actual_developer(commits, Config.load_config().github_org) do
       {:ok, developer}
@@ -319,27 +327,24 @@ defmodule RegistryManager.GitHubAPI do
   end
 
   defp get_repository_pull_requests_impl(repo_name, opts) do
-    full_repo_name = build_full_repo_name(repo_name)
-
-    with {:ok, pull_requests} <- Client.get_repository_pull_requests(full_repo_name, opts),
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name),
+         {:ok, pull_requests} <- Client.get_repository_pull_requests(full_repo_name, opts),
          {:ok, pr_status} <- Parser.extract_pr_status(pull_requests) do
       {:ok, pr_status}
     end
   end
 
   defp get_pull_request_reviews_impl(repo_name, pr_number, opts) do
-    full_repo_name = build_full_repo_name(repo_name)
-
-    with {:ok, reviews} <- Client.get_pull_request_reviews(full_repo_name, pr_number, opts),
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name),
+         {:ok, reviews} <- Client.get_pull_request_reviews(full_repo_name, pr_number, opts),
          {:ok, review_status} <- Parser.extract_review_status(reviews) do
       {:ok, review_status}
     end
   end
 
   defp get_pull_request_requested_reviewers_impl(repo_name, pr_number, opts) do
-    full_repo_name = build_full_repo_name(repo_name)
-
-    with {:ok, response} <-
+    with {:ok, full_repo_name} <- build_full_repo_name(repo_name),
+         {:ok, response} <-
            Client.get_pull_request_requested_reviewers(full_repo_name, pr_number, opts) do
       {:ok, Parser.extract_requested_reviewers(response)}
     end

@@ -83,6 +83,11 @@ defmodule RegistryManager.Commands.InitTest do
       refute readme =~ ~r/^\s+#/m
       assert readme =~ "private"
 
+      # ツールリンクは owner から組み立てる（smkwlab 固定にしない、issue #45）
+      assert readme =~ "https://github.com/testorg/registry-manager"
+      assert readme =~ "https://github.com/testorg/thesis-monitor"
+      refute readme =~ "smkwlab"
+
       {:ok, config} = YamlElixir.read_from_string(File.read!(config_path))
       assert config["registry_repo"] == "testorg/test-registry"
       assert config["github_org"] == "testorg"

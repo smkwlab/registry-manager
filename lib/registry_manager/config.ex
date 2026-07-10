@@ -19,10 +19,12 @@ defmodule RegistryManager.Config do
   defstruct csv_path: nil,
             registry_repo: nil,
             test_student_ids: [],
-            # 意図的なデフォルト: 本ツールは smkwlab がメンテナンスしており、
-            # 後方互換のため既定組織を維持する。他組織は config.yml /
-            # REGISTRY_MANAGER_GITHUB_ORG / --org で上書きする（README 参照）。
-            github_org: "smkwlab",
+            # github_org は既定値を持たない（issue #45）。未設定時は registry_repo
+            # の owner から導出する（init が owner を org に流用する規約を実行時にも
+            # 適用）。明示設定（config.yml / REGISTRY_MANAGER_GITHUB_ORG / --org）が
+            # 優先。registry_repo も無い場合は nil のままで、学生リポジトリ操作時に
+            # 明示エラーになる（他組織への静かな誤対象を防止）。
+            github_org: nil,
             cache: %{
               enabled: true,
               ttl_hours: 1,
@@ -49,7 +51,7 @@ defmodule RegistryManager.Config do
           csv_path: String.t() | nil,
           registry_repo: String.t() | nil,
           test_student_ids: [String.t()],
-          github_org: String.t(),
+          github_org: String.t() | nil,
           cache: cache_config(),
           api: api_config(),
           log_level: String.t()
@@ -215,8 +217,30 @@ defmodule RegistryManager.Config do
     cli_overrides = Application.get_env(:registry_manager, :cli_overrides, %{})
 
     merge_configs([default_config, user_config, env_config, cli_overrides])
+    |> apply_github_org_convention()
     |> apply_csv_convention()
   end
+
+  # github_org 未設定（nil / 空文字列）のとき、registry_repo の owner を既定として
+  # 使う（issue #45）。明示設定（config.yml / REGISTRY_MANAGER_GITHUB_ORG / --org）は
+  # マージ時点で既に入っているため常に優先される。registry_repo も未設定なら nil の
+  # ままにし、GitHubAPI.build_full_repo_name/1 が呼ばれた時点で明示エラーにさせる。
+  @doc false
+  @spec apply_github_org_convention(t()) :: t()
+  def apply_github_org_convention(%__MODULE__{github_org: org} = config) when org in [nil, ""] do
+    %{config | github_org: owner_from_registry_repo(config.registry_repo)}
+  end
+
+  def apply_github_org_convention(config), do: config
+
+  defp owner_from_registry_repo(registry_repo) when is_binary(registry_repo) do
+    case String.split(registry_repo, "/") do
+      [owner, _repo] when owner != "" -> owner
+      _ -> nil
+    end
+  end
+
+  defp owner_from_registry_repo(_registry_repo), do: nil
 
   # csv_path 未設定（nil / 空文字列）のとき、規約パス
   # ~/.config/<github_org>/students.csv が存在すればそれを使う（issue #16）。
