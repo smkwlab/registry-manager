@@ -129,7 +129,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 
 **補足**: `thesis` は repository_type の語彙では**ない**（repo 名 suffix・
 文書種別 DOC_TYPE・「論文まとめ」フィルタ名としてのみ使用する。
-smkwlab/thesis-management-tools#471 の設計決定を参照）。
+smkwlab/student-repo-management#471 の設計決定を参照）。
 命名規則は推論の目安であり、明示指定で任意タイプを登録できる。
 
 #### 2.3.2 タイプ推論ルール
