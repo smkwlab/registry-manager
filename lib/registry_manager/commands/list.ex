@@ -9,7 +9,7 @@ defmodule RegistryManager.Commands.List do
   - Basic mode: Repository names only
   - Long mode (-l/--long): Detailed table with student information
   - Filtering: By repository type (--type)
-  - Sorting: Alphabetical (default) or by time (--sort-by-time)
+  - Sorting: Alphabetical (default) or by time (--sort time / -t)
   - Output formats: table (default), csv, json
   - Activity information: Last activity (default in long mode), owner activity, or registry updated
   - Caching: GitHub API responses cached for performance

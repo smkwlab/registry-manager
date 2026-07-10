@@ -75,10 +75,15 @@ registry_repo: your-org/your-student-registry
 | `registry_repo` | GitHub データ操作時に必須 | `owner/repo` 形式のレジストリデータリポジトリ |
 | `csv_path` | 任意 | 学生名簿 CSV（氏名解決用）。未設定時は規約パス `~/.config/<github_org>/students.csv` が存在すればそれを使い、無ければ氏名解決なしで動作 |
 | `test_student_ids` | 任意 | 本番データ保護チェックでテストデータ扱いする学生 ID |
+| `cache.enabled` / `cache.ttl_hours` / `cache.max_size_mb` | 任意 | キャッシュ設定（既定: true / 1 / 50） |
+| `api.timeout_seconds` / `api.max_concurrent` | 任意 | GitHub API チューニング（既定: 15 / 8） |
+| `log_level` | 任意 | debug / info / warn / error（既定: info） |
 
 環境変数でも設定できます:
 `REGISTRY_MANAGER_GITHUB_ORG` / `REGISTRY_MANAGER_REGISTRY_REPO` /
-`REGISTRY_MANAGER_CSV_PATH` / `REGISTRY_MANAGER_TEST_STUDENT_IDS`（カンマ区切り）
+`REGISTRY_MANAGER_CSV_PATH` / `REGISTRY_MANAGER_TEST_STUDENT_IDS`（カンマ区切り）/
+`REGISTRY_MANAGER_CACHE_ENABLED` / `REGISTRY_MANAGER_CACHE_TTL_HOURS` /
+`REGISTRY_MANAGER_API_TIMEOUT` / `REGISTRY_MANAGER_LOG_LEVEL`
 
 CLI からも一時的に上書きできます（全コマンド共通のグローバルフラグ）:
 `--registry-repo <owner/repo>` / `--org <org>` / `-c, --config <path>`
