@@ -295,7 +295,7 @@ defmodule RegistryManager.Commands.ListTest do
   end
 
   describe "run/2 - sorting" do
-    test "sorts by time with --sort-by-time --show-registry-updated (newest first)", %{
+    test "sorts by time with --sort time --show-registry-updated (newest first)", %{
       repositories: repositories
     } do
       opts = [sort: "time", show_registry_updated: true]

@@ -20,8 +20,8 @@ defmodule RegistryManager.Config do
             registry_repo: nil,
             test_student_ids: [],
             # 意図的なデフォルト: 本ツールは smkwlab がメンテナンスしており、
-            # 後方互換のため既定組織を維持する。他組織は config.json または
-            # REGISTRY_MANAGER_GITHUB_ORG で上書きする（README 参照）。
+            # 後方互換のため既定組織を維持する。他組織は config.yml /
+            # REGISTRY_MANAGER_GITHUB_ORG / --org で上書きする（README 参照）。
             github_org: "smkwlab",
             cache: %{
               enabled: true,
@@ -169,7 +169,7 @@ defmodule RegistryManager.Config do
   end
 
   @doc """
-  Loads user configuration from JSON file.
+  Loads user configuration from the annotated YAML file.
   Returns map with only explicitly set values if file exists, empty map otherwise.
   """
   @spec load_user_config(String.t()) :: map()

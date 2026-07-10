@@ -72,15 +72,23 @@ registry_repo: smkwlab/thesis-student-registry
 レジストリデータファイルはリポジトリ内の `data/registry.json` に固定です。
 全設定項目は [CONFIGURATION.md](CONFIGURATION.md) を参照してください。
 
-#### 2. 環境変数の設定
+#### 2. 環境変数・CLI フラグによる一時上書き
+
+設定の優先順位は **CLI フラグ > 環境変数 > 設定ファイル > デフォルト値** です。
 
 ```bash
-# GitHub API トークンの設定（オプション）
-export GITHUB_TOKEN="your_github_token_here"
+# 環境変数での上書き（例）
+export REGISTRY_MANAGER_REGISTRY_REPO="your-org/your-registry"
+export REGISTRY_MANAGER_LOG_LEVEL="debug"
 
-# デバッグモード
-export REGISTRY_MANAGER_DEBUG=true
+# CLI フラグでの上書き（全コマンド共通）
+./registry-manager --registry-repo your-org/your-registry list
 ```
+
+環境変数の一覧は [CONFIGURATION.md](CONFIGURATION.md) を参照してください。
+GitHub 認証は `gh auth login` で行います（トークン用の設定キーはありません）。
+CI など対話ログインできない環境では、`gh` CLI 自体が参照する
+`GH_TOKEN` 環境変数で認証できます。
 
 ## 基本的な使い方
 
@@ -129,6 +137,23 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 ## コマンドリファレンス
 
+コマンドごとの詳細は `./registry-manager <command> --help` でも確認できます
+（help はオプション仕様の単一ソースから生成されるため常に実装と一致します）。
+
+### グローバルオプション
+
+全コマンド共通で使えます:
+
+| オプション | 短縮形 | 説明 |
+|------------|--------|------|
+| `--help` | `-h` | ヘルプを表示 |
+| `--verbose` | `-v` | 詳細ログを表示 |
+| `--registry-repo OWNER/REPO` | | registry_repo を一時的に上書き |
+| `--config PATH` | `-c` | 設定ファイルのパスを上書き |
+| `--org ORG` | | github_org を一時的に上書き |
+
+コマンドに存在しないオプションや enum 外の値はパース段階でエラーになります。
+
 ### list コマンド
 
 リポジトリ一覧を表示します。
@@ -138,22 +163,25 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ```
 
 **引数:**
-- `TYPE` - フィルター対象のリポジトリタイプ（wr, sotsuron, ise-report）
+- `TYPE` - フィルター対象のリポジトリタイプ（wr, ise, sotsuron, master, thesis, latex, other）
 
 **オプション:**
 
 | オプション | 短縮形 | 説明 |
 |------------|--------|------|
 | `--long` | `-l` | 詳細情報を表示 |
-| `--format FORMAT` | `-f` | 出力形式（table, csv, json） |
-| `--type TYPE` | `-t` | リポジトリタイプでフィルター |
+| `--format table\|csv\|json` | | 出力形式 |
+| `--type TYPE` | `-T` | リポジトリタイプでフィルター |
 | `--show-type` | | タイプ情報を表示 |
 | `--show-protection` | `-p` | 保護状態を表示 |
 | `--show-student-id` | `-s` | 学生IDを表示 |
-| `--no-names` | `-n` | 学生名を非表示 |
-| `--activity` | `-a` | GitHub活動情報を表示 |
-| `--owner-activity` | | オーナー活動情報を表示 |
-| `--sort-by-time` | | 時間順でソート |
+| `--no-names` | | 学生名を非表示 |
+| `--activity` | `-a` | リポジトリの最終活動時刻を表示 |
+| `--owner-activity` | `-o` | オーナーの活動時刻を表示 |
+| `--show-registry-updated` | | registry_updated_at 列を表示 |
+| `--show-both-timestamps` | | リポジトリ/レジストリ両方の時刻列を表示 |
+| `--no-cache` | | キャッシュを使用しない |
+| `--sort name\|time` | | ソートキー（デフォルト: name）。`-t` は `--sort time` の短縮 |
 | `--reverse` | `-r` | 逆順でソート |
 
 **使用例:**
@@ -163,6 +191,9 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 # CSV形式で全データ出力
 ./registry-manager list --format csv --long
+
+# 時刻順（新しい順）で逆順表示
+./registry-manager list --sort time -r
 
 # 保護状態付きでJSON出力
 ./registry-manager list --format json --show-protection
@@ -183,7 +214,6 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 **オプション:**
 - `--dry-run` - 実際には追加せず、処理内容のみ表示
-- `--force` - 既存エントリがある場合も強制実行
 
 **使用例:**
 ```bash
@@ -240,12 +270,13 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 **オプション:**
 - `--dry-run` - 実際には削除せず、処理内容のみ表示
-- `--force` - 確認なしで削除
+- `--delete-github-repo` - GitHub リポジトリ削除コマンドをあわせて案内
 
 **使用例:**
 ```bash
 ./registry-manager remove k21rs001-test
 ./registry-manager remove k21rs001-test --dry-run
+./registry-manager remove k21rs001-test --delete-github-repo
 ```
 
 ### cache コマンド
@@ -320,6 +351,71 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ```
 
 レガシー形式のエントリが検出された場合、移行は `migrate` コマンドで行います。
+
+### pr-status コマンド
+
+各リポジトリの Pull Request 状態を表示します。
+
+```bash
+./registry-manager pr-status [TYPE] [OPTIONS]
+```
+
+**オプション:**
+
+| オプション | 短縮形 | 説明 |
+|------------|--------|------|
+| `--format table\|csv\|json` | | 出力形式 |
+| `--type TYPE` | `-T` | リポジトリタイプでフィルター |
+| `--state open\|closed\|all` | | PR 状態でフィルター |
+| `--review-requested` | | レビューリクエスト保留中の PR のみ表示 |
+| `--sort repository\|updated\|created` | | ソートキー（デフォルト: repository。--review-requested 時は updated） |
+| `--reverse` | `-r` | 逆順でソート |
+| `--no-cache` | | キャッシュを使用しない |
+
+**使用例:**
+```bash
+./registry-manager pr-status --review-requested
+./registry-manager pr-status --type thesis --sort updated -r
+```
+
+### edit コマンド
+
+リポジトリの GitHub オーナーを編集します。
+
+```bash
+./registry-manager edit REPO_NAME [--add-owner USER | --remove-owner USER | --set-owners USER1,USER2]
+```
+
+### infer-student-id コマンド
+
+github_username から名簿 CSV を元に学生 ID を推論して設定します。
+
+```bash
+./registry-manager infer-student-id REPO_NAME [--dry-run]
+```
+
+### propagate-workflow コマンド
+
+ワークフロー更新をドラフトブランチ階層（main → 0th-draft → …）に伝播します。
+draft ブランチ階層は学生リポジトリの PR ベースレビューの前提構造で、
+詳細は [sotsuron-template](https://github.com/smkwlab/sotsuron-template) の
+ドキュメントを参照してください。
+
+```bash
+./registry-manager propagate-workflow REPO_NAME
+./registry-manager propagate-workflow --all [--type TYPE] [--from-template] [--dry-run]
+```
+
+### init コマンド
+
+レジストリデータリポジトリを bootstrap します（private repo 作成・
+`data/registry.json` と README の初期投入・config 生成。冪等）。
+レジストリの**データ**ファイルは JSON（`data/registry.json`）です。
+YAML なのはローカルの**設定**ファイル（`config.yml`）で、別物です。
+
+```bash
+./registry-manager init [OWNER/REPO] [--org ORG] [--force]
+```
 
 ## 応用的な使用例
 

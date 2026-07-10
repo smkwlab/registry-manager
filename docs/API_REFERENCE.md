@@ -110,7 +110,7 @@ def run(args, opts)
 - `show_type: boolean()` - タイプ情報表示
 - `show_protection: boolean()` - 保護状態表示
 - `activity: boolean()` - 活動情報表示
-- `sort_by_time: boolean()` - 時間順ソート
+- `sort: "name" | "time"` - ソートキー（CLI の `-t` は `"time"` の短縮）
 
 ### RegistryManager.GitHubAPI
 

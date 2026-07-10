@@ -5,14 +5,16 @@ registry-manager の設定方法を説明します。設定項目の正本は
 
 ## 設定概要
 
-設定は次の優先順位で読み込まれます（同じキーは上が勝ち）:
+設定は次の優先順位で読み込まれます（同じキーは上が勝ち。
+[ECOSYSTEM.md の Tool Configuration Conventions](https://github.com/smkwlab/latex-ecosystem/blob/main/ECOSYSTEM.md) に準拠）:
 
-1. **設定ファイル** — `~/.config/registry-manager/config.yml`
+1. **CLI フラグ** — `--registry-repo <owner/repo>` / `--org <org>` / `-c, --config <path>`（全コマンド共通）
 2. **環境変数** — `REGISTRY_MANAGER_*`
-3. **デフォルト値**
+3. **設定ファイル** — `~/.config/registry-manager/config.yml`
+4. **デフォルト値**
 
-一般的な慣習（環境変数 > 設定ファイル）とは逆ですが、管理者が明示的に書いた
-設定ファイルを、シェル環境に残った一時的な環境変数より優先する意図的な設計です。
+恒常的な設定は設定ファイルに置き、環境変数と CLI フラグは CI や検証時の
+一時的な上書きに使います。
 
 設定ファイルは**注釈付き YAML** です（issue #18）。旧形式の
 `~/.config/registry-manager/config.json` は読み込みません。YAML 1.2 は JSON の
@@ -86,9 +88,14 @@ export REGISTRY_MANAGER_API_TIMEOUT="15"
 export REGISTRY_MANAGER_LOG_LEVEL="debug"
 ```
 
-設定ファイルに同じキーがある場合は設定ファイルが優先されます。
-環境変数で一時的に上書きしたい場合は、config.yml の該当キーを
-コメントアウトしてから環境変数を設定してください。
+環境変数は設定ファイルより優先されるため、config.yml を変更せずに
+一時的な上書きができます。さらに一時的な指定には CLI フラグ
+（`--registry-repo` / `--org` / `-c, --config`）が環境変数よりも優先されます。
+
+```bash
+# 例: テスト用レジストリを一時的に参照（config.yml はそのまま）
+./registry-manager --registry-repo smkwlab/thesis-student-registry-test list
+```
 
 ## 認証
 

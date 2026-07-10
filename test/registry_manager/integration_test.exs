@@ -99,8 +99,8 @@ defmodule RegistryManager.IntegrationTest do
       assert {:ok, _} = List.run([], type: "wr")
 
       # List with sorting
-      assert {:ok, _} = List.run([], sort_by_time: true)
-      assert {:ok, _} = List.run([], sort_by_time: true, reverse: true)
+      assert {:ok, _} = List.run([], sort: "time")
+      assert {:ok, _} = List.run([], sort: "time", reverse: true)
 
       # Complex combination
       assert {:ok, _} =
@@ -108,7 +108,7 @@ defmodule RegistryManager.IntegrationTest do
                  format: "csv",
                  long: true,
                  type: "sotsuron",
-                 sort_by_time: true,
+                 sort: "time",
                  show_student_id: true
                )
     end
