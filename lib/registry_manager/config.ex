@@ -233,6 +233,22 @@ defmodule RegistryManager.Config do
 
   def apply_github_org_convention(config), do: config
 
+  @github_org_error ~s|github_org is not configured. Set "github_org" (or "registry_repo", | <>
+                      "whose owner is used) in ~/.config/registry-manager/config.yml, " <>
+                      "REGISTRY_MANAGER_GITHUB_ORG, or use --org."
+
+  @doc """
+  設定済みの github_org を返す。未設定（nil / 空）なら明示エラーを返す（issue #45）。
+  `owner/repo` 名を組み立てる呼び出し側が使い、他組織への静かな誤対象（`/repo`）を防ぐ。
+  """
+  @spec require_github_org() :: {:ok, String.t()} | {:error, String.t()}
+  def require_github_org do
+    case load_config().github_org do
+      org when org in [nil, ""] -> {:error, @github_org_error}
+      org -> {:ok, org}
+    end
+  end
+
   defp owner_from_registry_repo(registry_repo) when is_binary(registry_repo) do
     case String.split(registry_repo, "/") do
       [owner, _repo] when owner != "" -> owner

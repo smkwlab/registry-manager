@@ -419,9 +419,15 @@ defmodule RegistryManager.Repository do
   @doc """
   リポジトリ削除のためのghコマンドを生成
   安全のため確認プロンプト付き（--confirmは非推奨のため削除）
+
+  github_org 未設定時は明示エラーを返す（issue #45、"gh repo delete /repo" のような
+  誤ったコマンド生成を防ぐ）。
   """
+  @spec build_github_deletion_command(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def build_github_deletion_command(repo_name) do
-    "gh repo delete #{Config.load_config().github_org}/#{repo_name}"
+    with {:ok, org} <- Config.require_github_org() do
+      {:ok, "gh repo delete #{org}/#{repo_name}"}
+    end
   end
 
   @doc """
@@ -472,9 +478,10 @@ defmodule RegistryManager.Repository do
     base_message = "[DRY-RUN] リポジトリ情報を削除: #{repo_name}"
 
     if opts[:delete_github_repo] do
-      github_command = build_github_deletion_command(repo_name)
-      message = "#{base_message}\n[DRY-RUN] GitHubリポジトリ削除コマンド: #{github_command}"
-      {:ok, message}
+      with {:ok, github_command} <- build_github_deletion_command(repo_name) do
+        message = "#{base_message}\n[DRY-RUN] GitHubリポジトリ削除コマンド: #{github_command}"
+        {:ok, message}
+      end
     else
       {:ok, base_message}
     end
@@ -523,12 +530,12 @@ defmodule RegistryManager.Repository do
 
   defp build_deletion_response(result, repo_name, opts) do
     if opts[:delete_github_repo] do
-      github_command = build_github_deletion_command(repo_name)
+      with {:ok, github_command} <- build_github_deletion_command(repo_name) do
+        message =
+          "Registry updated successfully. To delete the GitHub repository, run:\n#{github_command}"
 
-      message =
-        "Registry updated successfully. To delete the GitHub repository, run:\n#{github_command}"
-
-      {:ok, message}
+        {:ok, message}
+      end
     else
       {:ok, result}
     end
@@ -607,9 +614,8 @@ defmodule RegistryManager.Repository do
   # 推論関連のプライベート関数
 
   defp infer_repository_data(repo_name, opts) do
-    full_repo_name = ensure_full_repo_name(repo_name)
-
-    with {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(full_repo_name),
+    with {:ok, full_repo_name} <- ensure_full_repo_name(repo_name),
+         {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(full_repo_name),
          {:ok, github_owner} <- get_actual_repository_developer(full_repo_name, repo_info, opts) do
       build_repository_data(repo_name, repo_info, github_owner, opts)
     else
@@ -636,11 +642,15 @@ defmodule RegistryManager.Repository do
     end
   end
 
+  # 既に owner/repo 形式ならそのまま、そうでなければ github_org を前置する。
+  # github_org 未設定時は明示エラー（issue #45、"/repo" への静かな誤対象を防ぐ）。
   defp ensure_full_repo_name(repo_name) do
     if String.contains?(repo_name, "/") do
-      repo_name
+      {:ok, repo_name}
     else
-      "#{Config.load_config().github_org}/#{repo_name}"
+      with {:ok, org} <- Config.require_github_org() do
+        {:ok, "#{org}/#{repo_name}"}
+      end
     end
   end
 
@@ -717,12 +727,10 @@ defmodule RegistryManager.Repository do
   end
 
   defp fallback_to_repository_inference(repo_name, opts) do
-    full_repo_name = ensure_full_repo_name(repo_name)
-
-    case RegistryManager.GitHubAPI.get_repository_info(full_repo_name) do
-      {:ok, repo_info} ->
-        extract_github_username_from_repo_info(full_repo_name, repo_info, opts)
-
+    with {:ok, full_repo_name} <- ensure_full_repo_name(repo_name),
+         {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(full_repo_name) do
+      extract_github_username_from_repo_info(full_repo_name, repo_info, opts)
+    else
       {:error, _} ->
         log_verbose(opts, "Repository not accessible for GitHub username inference")
         nil

@@ -340,13 +340,19 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
   end
 
   describe "build_github_deletion_command/1 - GitHub削除コマンド生成" do
+    setup do
+      # github_org を固定（issue #45 で既定を廃止したため、削除コマンドの owner を
+      # 実 config に依存させず決定的にする）。この describe に限定して汚染を避ける。
+      Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
+      on_exit(fn -> Application.delete_env(:registry_manager, :cli_overrides) end)
+      :ok
+    end
+
     test "generates correct gh command for repository deletion without deprecated --confirm flag" do
       repo_name = "k21rs001-sotsuron"
       expected_command = "gh repo delete smkwlab/k21rs001-sotsuron"
 
-      result = Repository.build_github_deletion_command(repo_name)
-
-      assert result == expected_command
+      assert {:ok, ^expected_command} = Repository.build_github_deletion_command(repo_name)
     end
 
     test "handles different repository name formats" do
@@ -357,8 +363,7 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
       ]
 
       Enum.each(test_cases, fn {repo_name, expected} ->
-        result = Repository.build_github_deletion_command(repo_name)
-        assert result == expected
+        assert {:ok, ^expected} = Repository.build_github_deletion_command(repo_name)
       end)
     end
   end
