@@ -14,9 +14,14 @@ defmodule RegistryManager.RepositoryPersistenceTest do
 
   setup do
     Application.put_env(:registry_manager, :env, :test)
+
+    # github_org を固定（issue #45 で既定を廃止したため、リポジトリ owner への
+    # フォールバック解決を実 config に依存させず決定的にする）
+    Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
     GitHubAPIMock.reset_mock_responses()
 
     on_exit(fn ->
+      Application.delete_env(:registry_manager, :cli_overrides)
       GitHubAPIMock.reset_mock_responses()
     end)
 

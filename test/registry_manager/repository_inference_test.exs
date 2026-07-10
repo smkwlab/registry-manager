@@ -13,12 +13,17 @@ defmodule RegistryManager.RepositoryInferenceTest do
       Application.put_env(:registry_manager, :env, :test)
       Application.put_env(:registry_manager, :use_github_mock, true)
 
+      # github_org を固定（issue #45 で既定を廃止したため、テストを実 config に
+      # 依存させず owner/repo の組み立てを決定的にする）
+      Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
+
       # Reset mock responses for clean state
       GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
         Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
+        Application.delete_env(:registry_manager, :cli_overrides)
         GitHubAPIMock.reset_mock_responses()
       end)
     end
@@ -266,12 +271,17 @@ defmodule RegistryManager.RepositoryInferenceTest do
       Application.put_env(:registry_manager, :env, :test)
       Application.put_env(:registry_manager, :use_github_mock, true)
 
+      # github_org を固定（issue #45 で既定を廃止したため、テストを実 config に
+      # 依存させず owner/repo の組み立てを決定的にする）
+      Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
+
       # Reset mock responses for clean state
       GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
         Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
+        Application.delete_env(:registry_manager, :cli_overrides)
         GitHubAPIMock.reset_mock_responses()
       end)
     end

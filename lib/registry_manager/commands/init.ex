@@ -169,8 +169,8 @@ defmodule RegistryManager.Commands.Init do
     学生リポジトリレジストリのデータリポジトリ（registry-manager で管理）。
 
     - 本体: `data/registry.json`
-    - 書き込み: [registry-manager](https://github.com/smkwlab/registry-manager)
-    - 読み取り・監視: [thesis-monitor](https://github.com/smkwlab/thesis-monitor)
+    - 書き込み: [registry-manager](https://github.com/#{owner}/registry-manager)
+    - 読み取り・監視: [thesis-monitor](https://github.com/#{owner}/thesis-monitor)
 
     **注意**: 学生の個人情報を含み得るため、このリポジトリは必ず private を維持してください。
     （組織: #{owner}）

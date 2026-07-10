@@ -61,7 +61,7 @@ registry_repo: your-org/thesis-student-registry
 
 | 項目 | デフォルト値 | 説明 |
 |------|-------------|------|
-| `github_org` | `"smkwlab"` | 学生リポジトリが属する GitHub Organization |
+| `github_org` | （`registry_repo` の owner から導出） | 学生リポジトリが属する GitHub Organization。未設定時は `registry_repo` の owner を使う。明示設定が優先。`registry_repo` も無い場合は未設定のままで、学生リポジトリ操作時に明示エラーになる |
 | `registry_repo` | `nil` | `owner/repo` 形式のレジストリデータリポジトリ。**writer の書き込み先のため規約導出せず明示必須** |
 | `csv_path` | `nil` | 任意。氏名解決用のローカル名簿 CSV。未設定時は規約パス `~/.config/<github_org>/students.csv` が存在すればそれを使い、無ければ氏名解決なしで動作（thesis-monitor も同じ規約パスを参照） |
 | `test_student_ids` | `[]` | 本番データ保護チェックでテストデータ扱いする学生 ID |

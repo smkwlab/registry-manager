@@ -50,7 +50,9 @@ defmodule RegistryManager.ConfigTest do
       # Registry data repository must be configured explicitly
       assert config.registry_repo == nil
       assert config.test_student_ids == []
-      assert config.github_org == "smkwlab"
+
+      # github_org は既定を持たず、registry_repo の owner から導出する（issue #45）
+      assert config.github_org == nil
       assert config.cache.enabled == true
       assert config.cache.ttl_hours == 1
       assert config.cache.max_size_mb == 50
@@ -266,6 +268,57 @@ defmodule RegistryManager.ConfigTest do
     end
   end
 
+  describe "github_org convention: derive from registry_repo owner (issue #45)" do
+    test "derives github_org from the registry_repo owner when unset" do
+      config =
+        Config.apply_github_org_convention(%Config{
+          github_org: nil,
+          registry_repo: "acme/registry-data"
+        })
+
+      assert config.github_org == "acme"
+    end
+
+    test "treats an empty github_org as unset and derives from registry_repo" do
+      config =
+        Config.apply_github_org_convention(%Config{
+          github_org: "",
+          registry_repo: "acme/registry-data"
+        })
+
+      assert config.github_org == "acme"
+    end
+
+    test "an explicit github_org wins over the derived owner" do
+      config =
+        Config.apply_github_org_convention(%Config{
+          github_org: "explicit",
+          registry_repo: "acme/registry-data"
+        })
+
+      assert config.github_org == "explicit"
+    end
+
+    test "leaves github_org nil when neither github_org nor registry_repo is set" do
+      config = Config.apply_github_org_convention(%Config{github_org: nil, registry_repo: nil})
+
+      assert config.github_org == nil
+    end
+
+    test "load_config derives github_org from registry_repo instead of a hardcoded default" do
+      dir = Path.join(System.tmp_dir!(), "rm_org_conv_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      path = Path.join(dir, "config.yml")
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      File.write!(path, "registry_repo: acme/registry-data\n")
+
+      config = Config.load_config(path)
+
+      assert config.github_org == "acme"
+    end
+  end
+
   describe "precedence: CLI > env > user config > default (issue #38)" do
     setup do
       dir = Path.join(System.tmp_dir!(), "rm_precedence_#{System.unique_integer([:positive])}")
@@ -425,7 +478,8 @@ defmodule RegistryManager.ConfigTest do
       config = Config.load_config(non_existent_file)
 
       assert config.registry_repo == nil
-      assert config.github_org == "smkwlab"
+      # registry_repo も未設定なので導出できず nil のまま（issue #45）
+      assert config.github_org == nil
     end
 
     test "csv_path defaults to nil when no CSV is configured" do
