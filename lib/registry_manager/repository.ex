@@ -731,8 +731,10 @@ defmodule RegistryManager.Repository do
          {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(full_repo_name) do
       extract_github_username_from_repo_info(full_repo_name, repo_info, opts)
     else
-      {:error, _} ->
-        log_verbose(opts, "Repository not accessible for GitHub username inference")
+      {:error, reason} ->
+        # github_org 未設定エラー（issue #45）も含め理由をログに残す。推論は best-effort
+        # なので契約どおり nil を返し、呼び出し側は username 未特定として続行する。
+        log_verbose(opts, "Repository not accessible for GitHub username inference: #{reason}")
         nil
     end
   end

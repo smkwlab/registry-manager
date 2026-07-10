@@ -34,6 +34,7 @@ defmodule RegistryManager.CLIAddInferenceTest do
       Application.put_env(:registry_manager, :test_output, "")
       Application.put_env(:registry_manager, :env, :test)
       Application.put_env(:registry_manager, :use_github_mock, true)
+
       # github_org を固定（issue #45 で既定を廃止したため、CLI 経由の inference で
       # owner/repo の組み立てを実 config に依存させず決定的にする）。CLI が
       # cli_overrides を再設定するため env var 側で固定する

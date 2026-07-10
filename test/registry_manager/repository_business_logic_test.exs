@@ -367,4 +367,27 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
       end)
     end
   end
+
+  describe "build_github_deletion_command/1 - github_org 未設定時のエラー (issue #45)" do
+    setup do
+      # github_org も registry_repo も無い状態を、存在しない config を指すことで
+      # 決定的に作る（実 config / cli_overrides への依存を断つ）。owner 導出が働かず
+      # require_github_org が明示エラーを返すことを検証する。
+      Application.put_env(
+        :registry_manager,
+        :config_path,
+        "/nonexistent/registry-manager-#{System.unique_integer([:positive])}.yml"
+      )
+
+      Application.delete_env(:registry_manager, :cli_overrides)
+
+      on_exit(fn -> Application.delete_env(:registry_manager, :config_path) end)
+      :ok
+    end
+
+    test "returns an explicit error when github_org is not configured" do
+      assert {:error, message} = Repository.build_github_deletion_command("some-repo")
+      assert message =~ "github_org is not configured"
+    end
+  end
 end

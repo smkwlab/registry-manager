@@ -12,6 +12,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
     setup do
       Application.put_env(:registry_manager, :env, :test)
       Application.put_env(:registry_manager, :use_github_mock, true)
+
       # github_org を固定（issue #45 で既定を廃止したため、テストを実 config に
       # 依存させず owner/repo の組み立てを決定的にする）
       Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
@@ -269,6 +270,7 @@ defmodule RegistryManager.RepositoryInferenceTest do
     setup do
       Application.put_env(:registry_manager, :env, :test)
       Application.put_env(:registry_manager, :use_github_mock, true)
+
       # github_org を固定（issue #45 で既定を廃止したため、テストを実 config に
       # 依存させず owner/repo の組み立てを決定的にする）
       Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})

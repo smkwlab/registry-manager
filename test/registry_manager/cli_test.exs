@@ -433,6 +433,7 @@ defmodule RegistryManager.CLITest do
     setup do
       Application.put_env(:registry_manager, :test_mode, true)
       Application.put_env(:registry_manager, :test_output, "")
+
       # github_org を固定（issue #45 で既定を廃止したため、CLI 経由の inference で
       # owner/repo の組み立てを実 config に依存させず決定的にする）
       System.put_env("REGISTRY_MANAGER_GITHUB_ORG", "smkwlab")
