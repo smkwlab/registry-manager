@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//home/toshi/prj/LaTeX/latex-ecosystem/thesis-student-registry/**)",
-      "Bash(python3 -c ' *)"
-    ]
-  }
-}

@@ -29,3 +29,6 @@ registry-manager
 # Never commit it here or to the registry (see README privacy section).
 *.csv
 !test/fixtures/*.csv
+
+# Claude Code のローカル設定（開発者固有の絶対パス等を含むためコミットしない）
+.claude/
