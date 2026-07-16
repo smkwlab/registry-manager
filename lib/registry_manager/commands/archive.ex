@@ -109,7 +109,7 @@ defmodule RegistryManager.Commands.Archive do
 
   # --- 単発（archive <repo>） ----------------------------------------------
 
-  defp run_single(repo, _opts, test_params) do
+  defp run_single(repo, opts, test_params) do
     with {:ok, {registry, sha}} <- get_registry(test_params) do
       case Map.get(registry, repo) do
         nil ->
@@ -119,9 +119,23 @@ defmodule RegistryManager.Commands.Archive do
           {:ok, "#{repo} は既に archive 済みです（archived_at: #{archived_at}）"}
 
         _data ->
-          archive_single(repo, registry, sha, test_params)
+          archive_or_simulate_single(repo, registry, sha, opts, test_params)
       end
     end
+  end
+
+  # 単発でも --dry-run を尊重し、副作用なしでシミュレーション表示する
+  defp archive_or_simulate_single(repo, registry, sha, opts, test_params) do
+    if opts[:dry_run] do
+      {:ok, format_single_dry_run(repo, test_params)}
+    else
+      archive_single(repo, registry, sha, test_params)
+    end
+  end
+
+  defp format_single_dry_run(repo, test_params) do
+    "[DRY-RUN] #{repo} — open PR #{open_pr_count_display(repo, test_params)} 件をクローズ → " <>
+      "archive → archived_at 記録（副作用なし）"
   end
 
   defp archive_single(repo, registry, sha, test_params) do
@@ -145,16 +159,24 @@ defmodule RegistryManager.Commands.Archive do
   # :mock_git と同型）。無ければ GitHubAPI 経由で実際に close/archive する。
   defp archive_one(repo, test_params) do
     case Keyword.fetch(test_params, :mock_archive) do
-      {:ok, {:error, reason}} -> {:error, reason}
-      {:ok, _truthy} -> {:ok, %{closed_prs: length(get_open_prs(repo, test_params))}}
-      :error -> do_archive(repo, test_params)
+      {:ok, {:error, reason}} ->
+        {:error, reason}
+
+      {:ok, _truthy} ->
+        with {:ok, prs} <- get_open_prs(repo, test_params) do
+          {:ok, %{closed_prs: length(prs)}}
+        end
+
+      :error ->
+        do_archive(repo, test_params)
     end
   end
 
+  # open PR 一覧の取得に失敗したら archive しない。取得できないまま archive すると
+  # open PR を閉じ残したまま read-only 化してしまうため、失敗はそのまま伝播させる。
   defp do_archive(repo, test_params) do
-    prs = get_open_prs(repo, test_params)
-
-    with :ok <- close_prs(repo, prs),
+    with {:ok, prs} <- get_open_prs(repo, test_params),
+         :ok <- close_prs(repo, prs),
          {:ok, _} <- GitHubAPI.archive_repository(repo) do
       {:ok, %{closed_prs: length(prs)}}
     end
@@ -178,17 +200,19 @@ defmodule RegistryManager.Commands.Archive do
     end
   end
 
+  # 戻り値は {:ok, [pr]} | {:error, reason}。取得失敗を握り潰さず呼び出し側に返す。
   defp get_open_prs(repo, test_params) do
     case test_params[:open_prs] do
-      nil -> fetch_open_prs(repo)
-      map -> Map.get(map, repo, [])
+      nil -> GitHubAPI.list_open_pull_requests(repo)
+      map -> {:ok, Map.get(map, repo, [])}
     end
   end
 
-  defp fetch_open_prs(repo) do
-    case GitHubAPI.list_open_pull_requests(repo) do
-      {:ok, prs} -> prs
-      {:error, _} -> []
+  # 一覧・dry-run の表示用: 取得失敗時は件数を "?" とし、レビューは継続する
+  defp open_pr_count_display(repo, test_params) do
+    case get_open_prs(repo, test_params) do
+      {:ok, prs} -> Integer.to_string(length(prs))
+      {:error, _reason} -> "?"
     end
   end
 
@@ -248,7 +272,7 @@ defmodule RegistryManager.Commands.Archive do
   defp format_list_line(result, test_params) do
     pr =
       if result.classification == :graduated do
-        Integer.to_string(length(get_open_prs(result.repo, test_params)))
+        open_pr_count_display(result.repo, test_params)
       else
         "-"
       end
@@ -273,10 +297,8 @@ defmodule RegistryManager.Commands.Archive do
 
     lines =
       Enum.map(graduated, fn r ->
-        prs = get_open_prs(r.repo, test_params)
-
         "  #{r.repo} [#{r.repository_type}] #{r.name || "-"} — " <>
-          "open PR #{length(prs)} 件をクローズ → archive → archived_at 記録"
+          "open PR #{open_pr_count_display(r.repo, test_params)} 件をクローズ → archive → archived_at 記録"
       end)
 
     Enum.join([header | lines], "\n")

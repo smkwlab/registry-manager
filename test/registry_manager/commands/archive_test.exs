@@ -137,6 +137,28 @@ defmodule RegistryManager.Commands.ArchiveTest do
       assert {:error, output} = Archive.run([], [graduated: true], params)
       assert output =~ "archive failed" or output =~ "❌"
     end
+
+    test "open PR 一覧の取得に失敗したら archive せずエラーを返す" do
+      # open PR を取得できないまま archive すると PR を閉じ残すため、失敗を伝播させる
+      GitHubAPIMock.set_mock_response(:list_open_pull_requests, fn _repo ->
+        {:error, "API rate limit"}
+      end)
+
+      GitHubAPIMock.set_mock_response(:archive_repository, fn _repo ->
+        flunk("must not archive when PR listing failed")
+      end)
+
+      # open_prs を注入しない（実 API 経路 = モックのエラーを通す）
+      params = [
+        repositories: sample_registry(),
+        roster: sample_roster(),
+        current_nendo: 2026,
+        registry_sha: "test-sha"
+      ]
+
+      assert {:error, output} = Archive.run([], [graduated: true], params)
+      assert output =~ "API rate limit"
+    end
   end
 
   describe "run/3 単発 archive <repo>" do
@@ -159,6 +181,22 @@ defmodule RegistryManager.Commands.ArchiveTest do
 
       assert_receive {:written, new_data}
       assert new_data["k26gjk01-wr"]["archived_at"] == "2026-07-17T00:00:00Z"
+    end
+
+    test "--dry-run では実行せずシミュレーション表示し、副作用を起こさない" do
+      GitHubAPIMock.set_mock_response(:archive_repository, fn _ ->
+        flunk("single --dry-run must not archive")
+      end)
+
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn _, _, _ ->
+        flunk("single --dry-run must not write registry")
+      end)
+
+      params = [repositories: sample_registry(), registry_sha: "test-sha"]
+
+      assert {:ok, output} = Archive.run(["k26gjk01-wr"], [dry_run: true], params)
+      assert output =~ "DRY-RUN"
+      assert output =~ "k26gjk01-wr"
     end
 
     test "registry 未登録のリポジトリはエラー" do

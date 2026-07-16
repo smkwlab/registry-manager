@@ -189,9 +189,10 @@ defmodule RegistryManager.Archive.Classifier do
         nil
 
       str ->
+        # "2024abc" のような末尾余剰付き文字列は年度として扱わない（不正値を弾く）
         case Integer.parse(str) do
-          {year, _rest} -> year
-          :error -> nil
+          {year, ""} -> year
+          _ -> nil
         end
     end
   end

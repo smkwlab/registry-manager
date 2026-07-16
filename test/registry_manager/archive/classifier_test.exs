@@ -172,6 +172,14 @@ defmodule RegistryManager.Archive.ClassifierTest do
       [result] = Classifier.classify_all(registry, roster, 2026)
       assert result.classification == :needs_review
     end
+
+    test "末尾に余剰文字を含む不正な年度は年度なしとして扱う（誤って卒業済みにしない）" do
+      registry = %{"k21rs001-wr" => %{"student_id" => "k21rs001", "repository_type" => "wr"}}
+      roster = [roster_entry(%{student_ids: ["k21rs001"], graduation_year: "2024abc"})]
+
+      [result] = Classifier.classify_all(registry, roster, 2026)
+      assert result.classification == :needs_review
+    end
   end
 
   describe "classify_all/3 — 突合キーの正規化" do
