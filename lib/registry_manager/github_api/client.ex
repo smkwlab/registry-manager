@@ -180,6 +180,42 @@ defmodule RegistryManager.GitHubAPI.Client do
     end
   end
 
+  @doc """
+  Issue / Pull Request にコメントを投稿（archive 前の整理コメント用）
+  """
+  def create_issue_comment(repo_name, issue_number, body) do
+    url = "https://api.github.com/repos/#{repo_name}/issues/#{issue_number}/comments"
+
+    with {:ok, token} <- get_github_token(),
+         {:ok, response} <- send_request(:post, url, token: token, body: %{body: body}) do
+      {:ok, response}
+    end
+  end
+
+  @doc """
+  Pull Request をクローズ（archive 後は read-only になるため事前に閉じる）
+  """
+  def close_pull_request(repo_name, pr_number) do
+    url = "https://api.github.com/repos/#{repo_name}/pulls/#{pr_number}"
+
+    with {:ok, token} <- get_github_token(),
+         {:ok, response} <- send_request(:patch, url, token: token, body: %{state: "closed"}) do
+      {:ok, response}
+    end
+  end
+
+  @doc """
+  リポジトリを archive する（卒業処理）
+  """
+  def archive_repository(repo_name) do
+    url = "https://api.github.com/repos/#{repo_name}"
+
+    with {:ok, token} <- get_github_token(),
+         {:ok, response} <- send_request(:patch, url, token: token, body: %{archived: true}) do
+      {:ok, response}
+    end
+  end
+
   # プライベート関数
 
   defp build_headers(token) do

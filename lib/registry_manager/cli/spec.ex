@@ -92,7 +92,14 @@ defmodule RegistryManager.CLI.Spec do
       alias: nil,
       values: nil,
       doc: "テンプレートから最新ワークフローを適用してから伝播"
-    }
+    },
+    graduated: %{
+      type: :boolean,
+      alias: nil,
+      values: nil,
+      doc: "名簿突合で卒業済み学生の登録リポジトリを一括対象にする"
+    },
+    list: %{type: :boolean, alias: nil, values: nil, doc: "候補一覧を判定理由つきで表示のみ（実行しない）"}
   }
 
   # 全コマンドで使えるオプション。
@@ -233,6 +240,23 @@ defmodule RegistryManager.CLI.Spec do
       examples: [
         "propagate-workflow k92rs001-sotsuron",
         "propagate-workflow --all --type thesis --dry-run"
+      ]
+    },
+    %{
+      name: "archive",
+      aliases: [],
+      usage: [
+        "archive <repo_name>",
+        "archive --graduated [--list | --dry-run]"
+      ],
+      summary:
+        "卒業済みリポジトリを archive（open PR クローズ → archive → archived_at 記録）。--graduated で名簿突合の一括、--list で候補一覧のみ、--dry-run で副作用なしのシミュレーション",
+      options: [:graduated, :list, :dry_run],
+      examples: [
+        "archive k21rs001-sotsuron",
+        "archive --graduated --list",
+        "archive --graduated --dry-run",
+        "archive --graduated"
       ]
     }
   ]

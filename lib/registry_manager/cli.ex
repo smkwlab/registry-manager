@@ -4,6 +4,7 @@ defmodule RegistryManager.CLI do
   """
 
   alias RegistryManager.CLI.Spec
+  alias RegistryManager.Commands.Archive
   alias RegistryManager.Commands.Cache
   alias RegistryManager.Commands.Edit
   alias RegistryManager.Commands.InferStudentId
@@ -171,7 +172,8 @@ defmodule RegistryManager.CLI do
       "infer-student-id" => &parse_infer_student_id_command/2,
       "edit" => &parse_edit_command/2,
       "pr-status" => &parse_pr_status_command/2,
-      "propagate-workflow" => &parse_propagate_workflow_command/2
+      "propagate-workflow" => &parse_propagate_workflow_command/2,
+      "archive" => &parse_archive_command/2
     }
   end
 
@@ -274,6 +276,18 @@ defmodule RegistryManager.CLI do
     do: {:propagate_workflow, [repo_name], opts}
 
   defp parse_propagate_workflow_command(_, _opts), do: :help
+
+  defp parse_archive_command([repo_name], opts), do: {:archive, [repo_name], opts}
+
+  defp parse_archive_command([], opts) do
+    if opts[:graduated] do
+      {:archive, [], opts}
+    else
+      :help
+    end
+  end
+
+  defp parse_archive_command(_, _opts), do: :help
 
   @spec process_impl(any()) :: no_return()
   defp process_impl(:help) do
@@ -505,6 +519,20 @@ defmodule RegistryManager.CLI do
 
       {:error, reason} ->
         print_output("❌ ワークフロー伝播エラー: #{reason}")
+        exit_with_code(1)
+    end
+  end
+
+  defp process_impl({:archive, args, opts}) do
+    if opts[:verbose], do: print_output("archive 処理を開始...")
+
+    case Archive.run(args, opts) do
+      {:ok, output} ->
+        print_output(output)
+        exit_with_code(0)
+
+      {:error, reason} ->
+        print_output("❌ archive エラー: #{reason}")
         exit_with_code(1)
     end
   end

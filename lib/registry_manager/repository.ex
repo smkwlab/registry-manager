@@ -143,7 +143,9 @@ defmodule RegistryManager.Repository do
     student_id: "学籍番号",
     graduate_student_id: "大学院学籍番号",
     student_name: "学生氏名",
-    github_username: "GitHub"
+    github_username: "GitHub",
+    graduation_year: "卒業年度",
+    completion_year: "修了年度"
   }
 
   # 学生の突合キーになりうる学籍番号の列。大学院生は「学籍番号」列に学部時代の
@@ -854,6 +856,66 @@ defmodule RegistryManager.Repository do
     {columns, rows} = split_csv_content(content)
 
     Enum.flat_map(rows, &parse_csv_line_for_student(&1, columns))
+  end
+
+  @doc """
+  名簿 CSV を「1 人 1 エントリ」の構造化リストとして読み込む（卒業処理の判定用）。
+
+  `get_all_students_from_csv/0` が student_id ごとに行を展開するのに対し、こちらは
+  学部/院の学籍番号を `student_ids` にまとめ、卒業年度・修了年度・大学院学籍番号も
+  含めて 1 人 1 エントリで返す。`RegistryManager.Archive.Classifier` が registry と
+  結合して卒業判定を行うための入力。
+
+  各エントリ:
+  `%{student_ids: [正規化済み...], name, github, graduation_year, completion_year,
+     graduate_student_id}`
+
+  値が空欄の列は空文字列（列自体が無ければ nil）。学籍番号を 1 つも持たない行
+  （教員・空行）はスキップする。
+  """
+  @spec load_roster() :: {:ok, [map()]} | {:error, String.t()}
+  def load_roster do
+    case read_csv_file() do
+      {:ok, content} ->
+        {:ok, parse_roster_from_csv(content)}
+
+      {:error, :not_configured} ->
+        {:error, "CSV file not configured (set csv_path to enable graduation classification)"}
+
+      {:error, {:read_failed, csv_path, reason}} ->
+        {:error, "CSV file not accessible at '#{csv_path}': #{inspect(reason)}"}
+    end
+  end
+
+  defp parse_roster_from_csv(content) do
+    {columns, rows} = split_csv_content(content)
+
+    Enum.flat_map(rows, &parse_csv_line_for_roster(&1, columns))
+  end
+
+  defp parse_csv_line_for_roster(line, columns) do
+    if String.trim(line) == "" do
+      []
+    else
+      parts = String.split(line, ",")
+      build_roster_entry(csv_student_ids(parts, columns), parts, columns)
+    end
+  end
+
+  # 学籍番号を持つ行だけをエントリ化する（教員行・空行は除外）
+  defp build_roster_entry([], _parts, _columns), do: []
+
+  defp build_roster_entry(student_ids, parts, columns) do
+    [
+      %{
+        student_ids: student_ids,
+        name: csv_field(parts, columns, :student_name),
+        github: csv_field(parts, columns, :github_username),
+        graduation_year: csv_field(parts, columns, :graduation_year),
+        completion_year: csv_field(parts, columns, :completion_year),
+        graduate_student_id: csv_field(parts, columns, :graduate_student_id)
+      }
+    ]
   end
 
   defp parse_csv_line_for_student(line, columns) do

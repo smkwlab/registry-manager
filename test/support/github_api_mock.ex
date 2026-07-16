@@ -94,6 +94,42 @@ defmodule RegistryManager.Test.GitHubAPIMock do
   end
 
   @doc """
+  テスト用 open PR 一覧取得（デフォルトは空）
+  """
+  def list_open_pull_requests(repo_name) do
+    default_fun = fn _repo_name -> {:ok, []} end
+    response_fun = get_mock_response(:list_open_pull_requests, default_fun)
+    response_fun.(repo_name)
+  end
+
+  @doc """
+  テスト用コメント投稿（常に成功）
+  """
+  def create_issue_comment(repo_name, issue_number, body) do
+    default_fun = fn _repo, _number, _body -> {:ok, %{"id" => 1}} end
+    response_fun = get_mock_response(:create_issue_comment, default_fun)
+    response_fun.(repo_name, issue_number, body)
+  end
+
+  @doc """
+  テスト用 PR クローズ（常に成功）
+  """
+  def close_pull_request(repo_name, pr_number) do
+    default_fun = fn _repo, _number -> {:ok, %{"state" => "closed"}} end
+    response_fun = get_mock_response(:close_pull_request, default_fun)
+    response_fun.(repo_name, pr_number)
+  end
+
+  @doc """
+  テスト用リポジトリ archive（常に成功）
+  """
+  def archive_repository(repo_name) do
+    default_fun = fn _repo -> {:ok, %{"archived" => true}} end
+    response_fun = get_mock_response(:archive_repository, default_fun)
+    response_fun.(repo_name)
+  end
+
+  @doc """
   テスト用リポジトリ情報取得
   """
   def get_repository_info(repo_name) do
