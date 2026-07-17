@@ -4,6 +4,7 @@ defmodule RegistryManager.IntegrationTest do
   alias RegistryManager.Commands.{Cache, List, Migrate, Validate}
   alias RegistryManager.GitHubAPI
   alias RegistryManager.Repository
+  alias RegistryManager.Test.GitHubAPIMock
 
   @moduledoc """
   Integration tests for registry-manager v4
@@ -196,29 +197,63 @@ defmodule RegistryManager.IntegrationTest do
 
   describe "performance and optimization" do
     test "caching reduces API calls" do
-      # Clear cache
+      # キャッシュ効果は実測時間ではなく「2 回目は API を叩かない」で決定的に検証する。
+      # get_repositories_json/0 はキャッシュ層を通らない設計（mock / _impl いずれも
+      # Client を直呼び）のため、実際にキャッシュが効くのは activity フロー
+      # （list --activity → Cache.get/put + get_repository_activity）。
+      # get_repository_activity のモック呼び出し回数を数え、キャッシュが warm な
+      # 2 回目では追加の API 呼び出しが発生しないことを assert する。
+
+      # activity キャッシュをクリア（先行テストのデータ混入を防ぐ）
       Cache.run(["clear"], [])
 
-      # First call should hit API
-      {time1, result1} = :timer.tc(fn -> GitHubAPI.get_repositories_json() end)
-      assert match?({:ok, _}, result1) or match?({:error, _}, result1)
+      # get_repositories_json を固定レスポンス（1 件以上）に明示設定する。
+      # activity フローの対象リポジトリが 0 件だと get_repository_activity が
+      # 一度も呼ばれず first_count == 0 となり、キャッシュとは無関係な理由で
+      # テストが落ちてしまう。前提をモックのデフォルトに委ねず自己完結させる。
+      registry_data = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "created_at" => "2025-01-01T00:00:00Z",
+          "registry_updated_at" => "2025-01-01T00:00:00Z"
+        }
+      }
 
-      # Second call should be faster (from cache)
-      {time2, result2} = :timer.tc(fn -> GitHubAPI.get_repositories_json() end)
-      assert match?({:ok, _}, result2) or match?({:error, _}, result2)
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+        {:ok, {registry_data, "test-sha"}}
+      end)
 
-      # Cache should make second call faster (unless first call failed)
-      case {result1, result2} do
-        {{:ok, _}, {:ok, _}} ->
-          # Both succeeded - cache should help
-          # Note: In test environment, this might not always be true
-          # Allow some variance
-          assert time2 <= time1 * 2
+      # 呼び出し回数カウンタ。on_exit はテストプロセス終了「後」に別プロセスで
+      # 実行されるため、リンクされた Agent は on_exit 実行時に既に停止している。
+      # そこで start（リンクなし）で起動し、後段の on_exit で明示的に停止する。
+      {:ok, counter} = Agent.start(fn -> 0 end)
 
-        _ ->
-          # One or both failed - skip performance check
-          :ok
-      end
+      GitHubAPIMock.set_mock_response(:get_repository_activity, fn _repo, _opts ->
+        Agent.update(counter, &(&1 + 1))
+        {:ok, "2025-07-01T12:00:00Z"}
+      end)
+
+      # クリーンアップは on_exit で行い、assert 失敗時も確実に実行されるようにする。
+      # モック設定はすべてこの登録より前に済ませてある。
+      on_exit(fn ->
+        Agent.stop(counter)
+        GitHubAPIMock.reset_mock_responses()
+        Cache.run(["clear"], [])
+      end)
+
+      # 1 回目: キャッシュが cold なので API（get_repository_activity）を叩く
+      assert {:ok, _} = List.run([], activity: true)
+      first_count = Agent.get(counter, & &1)
+      assert first_count > 0, "初回は API (get_repository_activity) が呼ばれるはず"
+
+      # 2 回目: キャッシュが warm なので API を叩かず、呼び出し回数は変わらない
+      assert {:ok, _} = List.run([], activity: true)
+      second_count = Agent.get(counter, & &1)
+
+      assert second_count == first_count,
+             "キャッシュ warm 後は追加の API 呼び出しが発生しないはず " <>
+               "(first=#{first_count}, second=#{second_count})"
     end
 
     test "list command completes in reasonable time" do
