@@ -41,6 +41,8 @@ defmodule RegistryManager.CLIAddInferenceTest do
       # System.delete_env と共有され、タイミングによって取りこぼされて flaky になるため
       # 使わない。これらのテストは CLI.process/1 を直接呼び parse_args を経ないので
       # cli_overrides は再設定されず残る。
+      # 従前値は退避し on_exit で復元する（無条件 delete で他テストの値を消さない）。
+      prev_overrides = Application.get_env(:registry_manager, :cli_overrides)
       Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
 
       # Reset mock responses for clean state
@@ -51,7 +53,12 @@ defmodule RegistryManager.CLIAddInferenceTest do
         Application.delete_env(:registry_manager, :test_output)
         Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
-        Application.delete_env(:registry_manager, :cli_overrides)
+
+        case prev_overrides do
+          nil -> Application.delete_env(:registry_manager, :cli_overrides)
+          val -> Application.put_env(:registry_manager, :cli_overrides, val)
+        end
+
         GitHubAPIMock.reset_mock_responses()
       end)
 

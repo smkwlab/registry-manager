@@ -458,13 +458,20 @@ defmodule RegistryManager.CLITest do
       # 与える（issue #55）。OS グローバルな REGISTRY_MANAGER_GITHUB_ORG は config_test の
       # System.delete_env と共有され flaky になるため使わない。ここは run_cli_process が
       # パース済みタプルを CLI.process/1 に直接渡し parse_args を経ないので cli_overrides は残る。
+      # 従前値は退避し on_exit で復元する（無条件 delete で他テストの値を消さない）。
+      prev_overrides = Application.get_env(:registry_manager, :cli_overrides)
       Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
       GitHubAPIMock.reset_mock_responses()
 
       on_exit(fn ->
         Application.delete_env(:registry_manager, :test_mode)
         Application.delete_env(:registry_manager, :test_output)
-        Application.delete_env(:registry_manager, :cli_overrides)
+
+        case prev_overrides do
+          nil -> Application.delete_env(:registry_manager, :cli_overrides)
+          val -> Application.put_env(:registry_manager, :cli_overrides, val)
+        end
+
         GitHubAPIMock.reset_mock_responses()
       end)
 
