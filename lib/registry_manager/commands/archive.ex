@@ -22,6 +22,13 @@ defmodule RegistryManager.Commands.Archive do
   registry の書き戻しは、成功した全リポジトリ分をまとめて 1 コミットで行う。
   個別リポジトリの失敗では中断せず、最後にまとめて報告する。
 
+  ## API 呼び出し（読み取り）
+
+  `--list` / `--dry-run` は副作用（PR クローズ・archive・registry 書き戻し）は
+  行わないが、表示のために「卒業済み」候補ごとに open PR 数を取得する読み取り
+  専用 API 呼び出しを行う（候補件数に比例）。取得に失敗した場合は件数を `?` と
+  表示して一覧・シミュレーションは継続する。
+
   ## 副作用のバイパス（テスト）
 
   `test_params`（キーワード）で外部依存を差し込める:
@@ -30,8 +37,11 @@ defmodule RegistryManager.Commands.Archive do
   - `:registry_sha` — 書き戻し用 sha（既定 `"test-sha"`）
   - `:roster` — 名簿エントリ list（`load_roster` バイパス）
   - `:current_nendo` — 判定基準年度
-  - `:open_prs` — `%{repo => [%{number, title}]}`
-  - `:mock_archive` — 実行結果をシミュレート（真値 = 成功 / `{:error, reason}` = 失敗）
+  - `:open_prs` — `%{repo => [%{number, title}]}`（PR 一覧の注入）
+  - `:mock_archive` — archive 実行結果をシミュレート（真値 = 成功 / `{:error, reason}`
+    = 失敗）。成功時は実際の close/archive は呼ばず、クローズ件数は `:open_prs` から
+    数える（未注入なら `list_open_pull_requests` のモック既定で 0 件）。実 API を
+    一切叩かせたくないテストでは `:open_prs` も併せて注入する
   - `:now` — `archived_at` に使う ISO8601 文字列
   """
 
@@ -91,7 +101,14 @@ defmodule RegistryManager.Commands.Archive do
     archived_ok = for {repo, {:ok, _}} <- exec_results, do: repo
 
     new_registry = build_archived_registry(registry, archived_ok, now_iso(test_params))
-    write_result = maybe_write(new_registry, archived_ok, sha)
+
+    # 成功分が 1 件でもあれば 1 コミットでまとめて書き戻す。0 件なら書かない。
+    write_result =
+      if archived_ok == [] do
+        :no_change
+      else
+        write_registry(new_registry, sha)
+      end
 
     output = format_execute(exec_results, results, write_result)
 
@@ -143,7 +160,8 @@ defmodule RegistryManager.Commands.Archive do
       {:ok, %{closed_prs: n}} ->
         new_registry = build_archived_registry(registry, [repo], now_iso(test_params))
 
-        case maybe_write(new_registry, [repo], sha) do
+        # 単発は必ず 1 件書き戻すので :no_change は発生しない（write_registry は :ok | {:error}）
+        case write_registry(new_registry, sha) do
           :ok -> {:ok, "✅ #{repo}: archived（PR #{n} 件クローズ）"}
           {:error, reason} -> {:error, "#{repo} を archive しましたが registry 更新に失敗: #{reason}"}
         end
@@ -232,9 +250,9 @@ defmodule RegistryManager.Commands.Archive do
     end)
   end
 
-  defp maybe_write(_registry, [], _sha), do: :no_change
-
-  defp maybe_write(registry, _repos, sha) do
+  # 常に registry を書き戻す（呼び出し側で「書き戻す対象があるか」を判定する）。
+  # 戻り値は :ok | {:error, reason} のみで、両呼び出し側の match は網羅的。
+  defp write_registry(registry, sha) do
     case GitHubAPI.update_repositories_json(registry, sha, @commit_message) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}

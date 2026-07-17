@@ -872,6 +872,12 @@ defmodule RegistryManager.Repository do
 
   値が空欄の列は空文字列（列自体が無ければ nil）。学籍番号を 1 つも持たない行
   （教員・空行）はスキップする。
+
+  制約: 行の分割は既存の名簿パース（`parse_csv_line_for_student` 等）と同じく
+  単純な `String.split(line, ",")` で行うため、クォートで囲まれたフィールドや
+  フィールド内カンマ（例: 氏名 "山田, 太郎"）は正しく扱えない。突合・判定に使う
+  列（学籍番号・大学院学籍番号・氏名・GitHub・卒業/修了年度）はカンマを含まない
+  運用前提。堅牢な CSV パースが必要になった場合は名簿パース全体を別途対応する。
   """
   @spec load_roster() :: {:ok, [map()]} | {:error, String.t()}
   def load_roster do

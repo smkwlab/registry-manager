@@ -36,7 +36,7 @@ defmodule RegistryManager.Commands.ArchiveTest do
         github: "grad",
         graduation_year: "2025",
         completion_year: nil,
-        graduate_student_id: "26gjk01"
+        graduate_student_id: "k26gjk01"
       }
     ]
   end

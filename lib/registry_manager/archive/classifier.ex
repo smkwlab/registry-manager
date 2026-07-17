@@ -197,6 +197,9 @@ defmodule RegistryManager.Archive.Classifier do
     end
   end
 
+  # 「空でない値」を返す。nil と空白のみの文字列は nil に潰す。
+  # 主対象は名簿由来の文字列（学籍番号・年度・氏名）。バイナリ以外（想定外の型）は
+  # 判定を壊さないようそのまま通す（呼び出し側は nil か否かだけを見る）。
   defp presence(nil), do: nil
 
   defp presence(value) when is_binary(value) do
