@@ -157,6 +157,9 @@ defmodule RegistryManager.Commands.Archive do
 
     output = format_interactive(transcript, exec_results, write_result)
 
+    # 一括実行と同じ execute_failed?/2 を使う。q 中断・全 n スキップ（実行 0 件）は
+    # write_result が :no_change となり、:no_change は {:error, _} にマッチしないため
+    # 失敗にはならず {:ok, output} を返す。実 archive の失敗時のみ {:error, output}。
     if execute_failed?(exec_results, write_result) do
       {:error, output}
     else
@@ -192,16 +195,16 @@ defmodule RegistryManager.Commands.Archive do
 
   defp interactive_step(cand, state, test_params) do
     {answer, rest} = prompt_answer(cand, state.inputs, test_params)
-    state = %{state | inputs: rest}
+    updated = %{state | inputs: rest}
 
     # prompt_answer は @valid_answers（y/n/a/q）のいずれかのみを返すため、この case は
     # それを網羅する。無言フォールバック（_ -> state）はスキップと区別できず将来の
     # 不整合を隠すため置かず、@valid_answers を増やす際はこの case も更新する。
     case answer do
-      "y" -> apply_archive(cand, state, test_params)
-      "a" -> apply_archive(cand, %{state | auto: true}, test_params)
-      "n" -> %{state | transcript: ["⏭  #{cand.repo}: スキップ" | state.transcript]}
-      "q" -> %{state | quit: true, transcript: ["🛑 中断しました" | state.transcript]}
+      "y" -> apply_archive(cand, updated, test_params)
+      "a" -> apply_archive(cand, %{updated | auto: true}, test_params)
+      "n" -> %{updated | transcript: ["⏭  #{cand.repo}: スキップ" | updated.transcript]}
+      "q" -> %{updated | quit: true, transcript: ["🛑 中断しました" | updated.transcript]}
     end
   end
 
@@ -260,6 +263,8 @@ defmodule RegistryManager.Commands.Archive do
   end
 
   defp prompt_text(cand, test_params) do
+    # 要確認は open PR 数取得（API 読み取り）を行わず "-" とする（--list/--dry-run と同じ）。
+    # 卒業済みのみ件数を表示し、要確認候補ごとの追加 API 呼び出しを避ける。
     pr =
       if cand.classification == :graduated do
         open_pr_count_display(cand.repo, test_params)
