@@ -8,10 +8,12 @@ defmodule RegistryManager.Commands.Archive do
       registry-manager archive --graduated            # 名簿突合で卒業済みを一括実行
       registry-manager archive --graduated --list     # 候補一覧を判定理由つきで表示のみ
       registry-manager archive --graduated --dry-run  # 実行手順のシミュレーション（副作用なし）
+      registry-manager archive --graduated -i         # 候補を 1 件ずつ確認しながら実行
 
   卒業判定は `RegistryManager.Archive.Classifier` に委譲する（registry × 名簿 ×
-  現在の年度の結合）。「要確認」に分類された候補は一括実行から除外し、最後に一覧
-  報告する（対話的な個別確認 `-i` は将来対応）。
+  現在の年度の結合）。非対話の一括実行では「要確認」に分類された候補を実行対象から
+  除外し、最後に一覧報告する。対話実行（`-i`）では「卒業済み」に加えて「要確認」も
+  1 件ずつ提示し、その場で人間が個別に判断できるようにする。
 
   各リポジトリへの実行内容:
 
@@ -43,6 +45,8 @@ defmodule RegistryManager.Commands.Archive do
     数える（未注入なら `list_open_pull_requests` のモック既定で 0 件）。実 API を
     一切叩かせたくないテストでは `:open_prs` も併せて注入する
   - `:now` — `archived_at` に使う ISO8601 文字列
+  - `:inputs` — 対話実行（`-i`）の応答列（`["y", "n", ...]`）。注入時は実 stdin を
+    読まずこの列を順に消費する。列が尽きたら中断（`q`）として扱う
   """
 
   alias RegistryManager.Archive.Classifier
@@ -70,6 +74,7 @@ defmodule RegistryManager.Commands.Archive do
       graduated: opts[:graduated] || false,
       list: opts[:list] || false,
       dry_run: opts[:dry_run] || false,
+      interactive: opts[:interactive] || false,
       verbose: opts[:verbose] || false
     ]
   end
@@ -89,6 +94,7 @@ defmodule RegistryManager.Commands.Archive do
       cond do
         opts[:list] -> {:ok, format_list(results, test_params)}
         opts[:dry_run] -> {:ok, format_dry_run(results, test_params)}
+        opts[:interactive] -> execute_interactive(results, registry, sha, test_params)
         true -> execute_graduated(results, registry, sha, test_params)
       end
     end
@@ -122,6 +128,174 @@ defmodule RegistryManager.Commands.Archive do
   defp execute_failed?(exec_results, write_result) do
     Enum.any?(exec_results, fn {_repo, res} -> match?({:error, _}, res) end) or
       match?({:error, _}, write_result)
+  end
+
+  # --- 対話（--graduated -i） ----------------------------------------------
+
+  @valid_answers ~w(y n a q)
+
+  # 対話候補は「卒業済み」+「要確認」。非対話の一括実行は「要確認」を対象にしないが、
+  # 対話ではその場で人間が個別に判断できるよう提示する（在学中・archive済みは除外）。
+  defp execute_interactive(results, registry, sha, test_params) do
+    candidates =
+      results
+      |> Enum.filter(&(&1.classification in [:graduated, :needs_review]))
+      |> Enum.sort_by(&{candidate_order(&1.classification), &1.repo})
+
+    {exec_results, transcript} = interactive_loop(candidates, test_params)
+    archived_ok = for {repo, {:ok, _}} <- exec_results, do: repo
+
+    new_registry = build_archived_registry(registry, archived_ok, now_iso(test_params))
+
+    # 一括実行と同じく、成功分が 1 件でもあれば 1 コミットでまとめて書き戻す。
+    write_result =
+      if archived_ok == [] do
+        :no_change
+      else
+        write_registry(new_registry, sha)
+      end
+
+    output = format_interactive(transcript, exec_results, write_result)
+
+    # 一括実行と同じ execute_failed?/2 を使う。q 中断・全 n スキップ（実行 0 件）は
+    # write_result が :no_change となり、:no_change は {:error, _} にマッチしないため
+    # 失敗にはならず {:ok, output} を返す。実 archive の失敗時のみ {:error, output}。
+    if execute_failed?(exec_results, write_result) do
+      {:error, output}
+    else
+      {:ok, output}
+    end
+  end
+
+  # 対話の提示順: 判定が明確な「卒業済み」を先に、要確認を後に（同一分類内は repo 名順）
+  defp candidate_order(:graduated), do: 0
+  defp candidate_order(:needs_review), do: 1
+
+  # candidates を 1 件ずつ確認しながら畳み込む。
+  # 状態: auto?（a 選択後は確認なし）/ quit?（q 選択後は以降スキップ）/ 残り入力 /
+  #       実行結果（{repo, result}）/ 表示ログ。
+  defp interactive_loop(candidates, test_params) do
+    initial = %{auto: false, quit: false, inputs: test_params[:inputs], exec: [], transcript: []}
+    final = Enum.reduce(candidates, initial, &interactive_step(&1, &2, test_params))
+    {Enum.reverse(final.exec), Enum.reverse(final.transcript)}
+  end
+
+  # quit と auto は同時に true にならない（q を選ぶと以降 prompt しないため auto に
+  # 遷移しない）。仮に両方 true でも quit を優先する（残りは実行せずスキップ）。
+  #
+  # 中断後は残り候補をスキップとして記録するのみ
+  defp interactive_step(cand, %{quit: true} = state, _test_params) do
+    %{state | transcript: ["⏭  #{cand.repo}: 中断のためスキップ" | state.transcript]}
+  end
+
+  # a 選択後は確認せず archive
+  defp interactive_step(cand, %{auto: true} = state, test_params) do
+    apply_archive(cand, state, test_params)
+  end
+
+  defp interactive_step(cand, state, test_params) do
+    {answer, rest} = prompt_answer(cand, state.inputs, test_params)
+    updated = %{state | inputs: rest}
+
+    # prompt_answer は @valid_answers（y/n/a/q）のいずれかのみを返すため、この case は
+    # それを網羅する。無言フォールバック（_ -> state）はスキップと区別できず将来の
+    # 不整合を隠すため置かず、@valid_answers を増やす際はこの case も更新する。
+    case answer do
+      "y" -> apply_archive(cand, updated, test_params)
+      "a" -> apply_archive(cand, %{updated | auto: true}, test_params)
+      "n" -> %{updated | transcript: ["⏭  #{cand.repo}: スキップ" | updated.transcript]}
+      "q" -> %{updated | quit: true, transcript: ["🛑 中断しました" | updated.transcript]}
+    end
+  end
+
+  defp apply_archive(cand, state, test_params) do
+    result = archive_one(cand.repo, test_params)
+
+    %{
+      state
+      | exec: [{cand.repo, result} | state.exec],
+        transcript: [format_exec_line({cand.repo, result}) | state.transcript]
+    }
+  end
+
+  # 有効な応答（y/n/a/q）が得られるまで読み取る。入力終端（eof / 注入列の枯渇）は
+  # 中断（q）として扱う。無効な入力は本番でのみ注意表示して再入力を促す。
+  # 無効入力時の再帰は末尾位置（TCO 対象）なのでスタックは伸びない。
+  defp prompt_answer(cand, inputs, test_params) do
+    {raw, rest} = read_line(prompt_text(cand, test_params), inputs)
+
+    case normalize_answer(raw) do
+      :eof ->
+        {"q", rest}
+
+      answer when answer in @valid_answers ->
+        {answer, rest}
+
+      _invalid ->
+        notify_invalid(test_params)
+        prompt_answer(cand, rest, test_params)
+    end
+  end
+
+  # inputs が nil のときだけ実 stdin を読む（本番）。list のときは注入応答を消費する。
+  defp read_line(prompt, nil) do
+    case IO.gets(prompt) do
+      :eof -> {:eof, nil}
+      {:error, _reason} -> {:eof, nil}
+      line -> {line, nil}
+    end
+  end
+
+  defp read_line(_prompt, []), do: {:eof, []}
+  defp read_line(_prompt, [head | tail]), do: {head, tail}
+
+  defp normalize_answer(:eof), do: :eof
+  defp normalize_answer(raw) when is_binary(raw), do: raw |> String.trim() |> String.downcase()
+
+  # 本番（実 stdin）でのみ無効入力を通知する。応答注入（test_params[:inputs]）が
+  # あるテストでは静かに再入力する。判定は再帰で不変な test_params に基づく。
+  defp notify_invalid(test_params) do
+    if Keyword.has_key?(test_params, :inputs) do
+      :ok
+    else
+      IO.puts("y / n / a / q のいずれかで答えてください。")
+    end
+  end
+
+  defp prompt_text(cand, test_params) do
+    # 要確認は open PR 数取得（API 読み取り）を行わず "-" とする（--list/--dry-run と同じ）。
+    # 卒業済みのみ件数を表示し、要確認候補ごとの追加 API 呼び出しを避ける。
+    pr =
+      if cand.classification == :graduated do
+        open_pr_count_display(cand.repo, test_params)
+      else
+        "-"
+      end
+
+    header =
+      Enum.join(
+        [
+          label(cand.classification),
+          cand.repo,
+          "[#{cand.repository_type}]",
+          cand.name || "-",
+          "卒#{cand.graduation_year || "-"}/修#{cand.completion_year || "-"}",
+          "PR:#{pr}",
+          cand.reason
+        ],
+        "\t"
+      )
+
+    "#{header}\n  archive しますか? [y=実行 / n=スキップ / a=以降すべて / q=中断]: "
+  end
+
+  defp format_interactive(transcript, exec_results, write_result) do
+    executed = Enum.count(exec_results, fn {_repo, res} -> match?({:ok, _}, res) end)
+    header = "対話 archive 完了（#{executed} 件を archive）"
+
+    # transcript は interactive_loop で Enum.reverse 済み＝提示順（先頭が最初の候補）
+    lines = [header] ++ transcript ++ ["", format_write_line(write_result)]
+    Enum.join(lines, "\n")
   end
 
   # --- 単発（archive <repo>） ----------------------------------------------

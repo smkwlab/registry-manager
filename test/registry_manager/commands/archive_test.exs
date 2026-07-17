@@ -59,6 +59,7 @@ defmodule RegistryManager.Commands.ArchiveTest do
       assert opts[:graduated] == false
       assert opts[:list] == false
       assert opts[:dry_run] == false
+      assert opts[:interactive] == false
     end
   end
 
@@ -158,6 +159,138 @@ defmodule RegistryManager.Commands.ArchiveTest do
 
       assert {:error, output} = Archive.run([], [graduated: true], params)
       assert output =~ "API rate limit"
+    end
+  end
+
+  describe "run/3 --graduated -i (interactive)" do
+    # 対話候補は「卒業済み(k21rs001-sotsuron)」と「要確認(k00rs999-wr)」の 2 件。
+    # 在学中(k26gjk01-wr)は対話でも提示しない。応答は test_params[:inputs] で注入する。
+
+    defp interactive_params(inputs, extra \\ []) do
+      test_pid = self()
+
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data, sha, _msg ->
+        send(test_pid, {:written, new_data, sha})
+        {:ok, "ok"}
+      end)
+
+      # interactive の実行分岐は opts 側（run/3 の 2 引数目）で判定するため、
+      # test_params には interactive を含めない。応答注入は :inputs のみで足りる。
+      base_params(
+        [
+          mock_archive: true,
+          open_prs: %{},
+          now: "2026-07-17T00:00:00Z",
+          inputs: inputs
+        ] ++ extra
+      )
+    end
+
+    test "全 y で卒業済み・要確認の両方を archive する" do
+      params = interactive_params(["y", "y"])
+
+      assert {:ok, output} = Archive.run([], [graduated: true, interactive: true], params)
+      assert output =~ "k21rs001-sotsuron"
+
+      assert_receive {:written, new_data, "test-sha"}
+      assert new_data["k21rs001-sotsuron"]["archived_at"] == "2026-07-17T00:00:00Z"
+      assert new_data["k00rs999-wr"]["archived_at"] == "2026-07-17T00:00:00Z"
+      # 在学中は対象外
+      refute Map.has_key?(new_data["k26gjk01-wr"], "archived_at")
+    end
+
+    test "y と n の混在では y の候補だけ archive する" do
+      params = interactive_params(["y", "n"])
+
+      assert {:ok, _output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      assert_receive {:written, new_data, _sha}
+      assert new_data["k21rs001-sotsuron"]["archived_at"] == "2026-07-17T00:00:00Z"
+      refute Map.has_key?(new_data["k00rs999-wr"], "archived_at")
+    end
+
+    test "n で卒業済みをスキップし、y で要確認を archive できる" do
+      params = interactive_params(["n", "y"])
+
+      assert {:ok, _output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      assert_receive {:written, new_data, _sha}
+      refute Map.has_key?(new_data["k21rs001-sotsuron"], "archived_at")
+      assert new_data["k00rs999-wr"]["archived_at"] == "2026-07-17T00:00:00Z"
+    end
+
+    test "a で以降すべてを確認なしに archive する" do
+      params = interactive_params(["a"])
+
+      assert {:ok, _output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      assert_receive {:written, new_data, _sha}
+      assert new_data["k21rs001-sotsuron"]["archived_at"] == "2026-07-17T00:00:00Z"
+      assert new_data["k00rs999-wr"]["archived_at"] == "2026-07-17T00:00:00Z"
+    end
+
+    test "q で中断し、以降は archive せず registry も書き込まない" do
+      # 1 件目で中断 → 実行 0 件 → 書き込みなし
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn _, _, _ ->
+        flunk("q で中断した場合は registry を書き込まない")
+      end)
+
+      params =
+        base_params(
+          mock_archive: true,
+          open_prs: %{},
+          inputs: ["q"]
+        )
+
+      assert {:ok, output} = Archive.run([], [graduated: true, interactive: true], params)
+      assert output =~ "中断" or output =~ "archive 対象がありませんでした"
+    end
+
+    test "q で中断する前に y で archive した分は記録される" do
+      params = interactive_params(["y", "q"])
+
+      assert {:ok, _output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      assert_receive {:written, new_data, _sha}
+      assert new_data["k21rs001-sotsuron"]["archived_at"] == "2026-07-17T00:00:00Z"
+      refute Map.has_key?(new_data["k00rs999-wr"], "archived_at")
+    end
+
+    test "入力が尽きたら中断として扱い、書き込まない" do
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn _, _, _ ->
+        flunk("入力が尽きたら registry を書き込まない")
+      end)
+
+      params =
+        base_params(
+          mock_archive: true,
+          open_prs: %{},
+          inputs: []
+        )
+
+      assert {:ok, _output} = Archive.run([], [graduated: true, interactive: true], params)
+    end
+
+    test "無効な入力は再プロンプトし、次の有効な応答で判定する" do
+      params = interactive_params(["x", "y", "n"])
+
+      assert {:ok, _output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      assert_receive {:written, new_data, _sha}
+      # "x"(無効)→再入力"y" で 1 件目 archive、"n" で 2 件目スキップ
+      assert new_data["k21rs001-sotsuron"]["archived_at"] == "2026-07-17T00:00:00Z"
+      refute Map.has_key?(new_data["k00rs999-wr"], "archived_at")
+    end
+
+    test "提示・表示順は卒業済み→要確認で決定的" do
+      params = interactive_params(["y", "y"])
+
+      assert {:ok, output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      # 卒業済み(k21rs001-sotsuron)が要確認(k00rs999-wr)より前に表示される
+      graduated_pos = :binary.match(output, "k21rs001-sotsuron") |> elem(0)
+      review_pos = :binary.match(output, "k00rs999-wr") |> elem(0)
+      assert graduated_pos < review_pos
     end
   end
 

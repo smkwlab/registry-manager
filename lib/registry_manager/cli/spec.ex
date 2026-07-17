@@ -99,7 +99,13 @@ defmodule RegistryManager.CLI.Spec do
       values: nil,
       doc: "名簿突合で卒業済み学生の登録リポジトリを一括対象にする"
     },
-    list: %{type: :boolean, alias: nil, values: nil, doc: "候補一覧を判定理由つきで表示のみ（実行しない）"}
+    list: %{type: :boolean, alias: nil, values: nil, doc: "候補一覧を判定理由つきで表示のみ（実行しない）"},
+    interactive: %{
+      type: :boolean,
+      alias: :i,
+      values: nil,
+      doc: "候補を 1 件ずつ確認しながら archive（y/n/a/q）"
+    }
   }
 
   # 全コマンドで使えるオプション。
@@ -247,16 +253,17 @@ defmodule RegistryManager.CLI.Spec do
       aliases: [],
       usage: [
         "archive <repo_name>",
-        "archive --graduated [--list | --dry-run]"
+        "archive --graduated [--list | --dry-run | -i]"
       ],
       summary:
-        "卒業済みリポジトリを archive（open PR クローズ → archive → archived_at 記録）。--graduated で名簿突合の一括、--list で候補一覧のみ、--dry-run で副作用なしのシミュレーション",
-      options: [:graduated, :list, :dry_run],
+        "卒業済みリポジトリを archive（open PR クローズ → archive → archived_at 記録）。--graduated で名簿突合の一括、--list で候補一覧のみ、--dry-run で副作用なしのシミュレーション、-i で 1 件ずつ確認しながら実行",
+      options: [:graduated, :list, :dry_run, :interactive],
       examples: [
         "archive k21rs001-sotsuron",
         "archive --graduated --list",
         "archive --graduated --dry-run",
-        "archive --graduated"
+        "archive --graduated",
+        "archive --graduated -i"
       ]
     }
   ]
