@@ -194,6 +194,9 @@ defmodule RegistryManager.Commands.Archive do
     {answer, rest} = prompt_answer(cand, state.inputs, test_params)
     state = %{state | inputs: rest}
 
+    # prompt_answer は @valid_answers（y/n/a/q）のいずれかのみを返すため、この case は
+    # それを網羅する。無言フォールバック（_ -> state）はスキップと区別できず将来の
+    # 不整合を隠すため置かず、@valid_answers を増やす際はこの case も更新する。
     case answer do
       "y" -> apply_archive(cand, state, test_params)
       "a" -> apply_archive(cand, %{state | auto: true}, test_params)
