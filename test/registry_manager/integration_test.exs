@@ -224,19 +224,22 @@ defmodule RegistryManager.IntegrationTest do
         {:ok, {registry_data, "test-sha"}}
       end)
 
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
-
-      # クリーンアップは on_exit で行い、assert 失敗時も確実に実行されるようにする。
-      # counter はテストプロセスにリンクされ終了時に自動で停止するため、
-      # ここでは stop せずモック設定とキャッシュのみリセットする。
-      on_exit(fn ->
-        GitHubAPIMock.reset_mock_responses()
-        Cache.run(["clear"], [])
-      end)
+      # 呼び出し回数カウンタ。on_exit はテストプロセス終了「後」に別プロセスで
+      # 実行されるため、リンクされた Agent は on_exit 実行時に既に停止している。
+      # そこで start（リンクなし）で起動し、後段の on_exit で明示的に停止する。
+      {:ok, counter} = Agent.start(fn -> 0 end)
 
       GitHubAPIMock.set_mock_response(:get_repository_activity, fn _repo, _opts ->
         Agent.update(counter, &(&1 + 1))
         {:ok, "2025-07-01T12:00:00Z"}
+      end)
+
+      # クリーンアップは on_exit で行い、assert 失敗時も確実に実行されるようにする。
+      # モック設定はすべてこの登録より前に済ませてある。
+      on_exit(fn ->
+        Agent.stop(counter)
+        GitHubAPIMock.reset_mock_responses()
+        Cache.run(["clear"], [])
       end)
 
       # 1 回目: キャッシュが cold なので API（get_repository_activity）を叩く
