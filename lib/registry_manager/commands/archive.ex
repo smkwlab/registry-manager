@@ -177,6 +177,9 @@ defmodule RegistryManager.Commands.Archive do
     {Enum.reverse(final.exec), Enum.reverse(final.transcript)}
   end
 
+  # quit と auto は同時に true にならない（q を選ぶと以降 prompt しないため auto に
+  # 遷移しない）。仮に両方 true でも quit を優先する（残りは実行せずスキップ）。
+  #
   # 中断後は残り候補をスキップとして記録するのみ
   defp interactive_step(cand, %{quit: true} = state, _test_params) do
     %{state | transcript: ["⏭  #{cand.repo}: 中断のためスキップ" | state.transcript]}
@@ -222,7 +225,7 @@ defmodule RegistryManager.Commands.Archive do
         {answer, rest}
 
       _invalid ->
-        notify_invalid(inputs)
+        notify_invalid(test_params)
         prompt_answer(cand, rest, test_params)
     end
   end
@@ -242,9 +245,15 @@ defmodule RegistryManager.Commands.Archive do
   defp normalize_answer(:eof), do: :eof
   defp normalize_answer(raw) when is_binary(raw), do: raw |> String.trim() |> String.downcase()
 
-  # 本番（実 stdin）でのみ無効入力を通知する。テスト（注入）は静かに再入力する。
-  defp notify_invalid(nil), do: IO.puts("y / n / a / q のいずれかで答えてください。")
-  defp notify_invalid(_injected), do: :ok
+  # 本番（実 stdin）でのみ無効入力を通知する。応答注入（test_params[:inputs]）が
+  # あるテストでは静かに再入力する。判定は再帰で不変な test_params に基づく。
+  defp notify_invalid(test_params) do
+    if Keyword.has_key?(test_params, :inputs) do
+      :ok
+    else
+      IO.puts("y / n / a / q のいずれかで答えてください。")
+    end
+  end
 
   defp prompt_text(cand, test_params) do
     pr =

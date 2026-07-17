@@ -282,6 +282,17 @@ defmodule RegistryManager.Commands.ArchiveTest do
       assert new_data["k21rs001-sotsuron"]["archived_at"] == "2026-07-17T00:00:00Z"
       refute Map.has_key?(new_data["k00rs999-wr"], "archived_at")
     end
+
+    test "提示・表示順は卒業済み→要確認で決定的" do
+      params = interactive_params(["y", "y"])
+
+      assert {:ok, output} = Archive.run([], [graduated: true, interactive: true], params)
+
+      # 卒業済み(k21rs001-sotsuron)が要確認(k00rs999-wr)より前に表示される
+      graduated_pos = :binary.match(output, "k21rs001-sotsuron") |> elem(0)
+      review_pos = :binary.match(output, "k00rs999-wr") |> elem(0)
+      assert graduated_pos < review_pos
+    end
   end
 
   describe "run/3 単発 archive <repo>" do
