@@ -137,7 +137,70 @@ defmodule RegistryManager.GitHubAPI do
     end
   end
 
+  @doc """
+  リポジトリの open Pull Request 一覧を取得（archive 前のクローズ対象）。
+  戻り値は `{:ok, [%{number: integer, title: String.t()}]}`。
+  """
+  def list_open_pull_requests(repo_name) do
+    if use_mock?() do
+      apply(RegistryManager.Test.GitHubAPIMock, :list_open_pull_requests, [repo_name])
+    else
+      list_open_pull_requests_impl(repo_name)
+    end
+  end
+
+  @doc """
+  Issue / Pull Request にコメントを投稿
+  """
+  def create_issue_comment(repo_name, issue_number, body) do
+    if use_mock?() do
+      apply(RegistryManager.Test.GitHubAPIMock, :create_issue_comment, [
+        repo_name,
+        issue_number,
+        body
+      ])
+    else
+      with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name) do
+        Client.create_issue_comment(full_repo_name, issue_number, body)
+      end
+    end
+  end
+
+  @doc """
+  Pull Request をクローズ
+  """
+  def close_pull_request(repo_name, pr_number) do
+    if use_mock?() do
+      apply(RegistryManager.Test.GitHubAPIMock, :close_pull_request, [repo_name, pr_number])
+    else
+      with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name) do
+        Client.close_pull_request(full_repo_name, pr_number)
+      end
+    end
+  end
+
+  @doc """
+  リポジトリを archive
+  """
+  def archive_repository(repo_name) do
+    if use_mock?() do
+      apply(RegistryManager.Test.GitHubAPIMock, :archive_repository, [repo_name])
+    else
+      with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name) do
+        Client.archive_repository(full_repo_name)
+      end
+    end
+  end
+
   # プライベート実装関数
+
+  defp list_open_pull_requests_impl(repo_name) do
+    with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name),
+         {:ok, response} <- Client.get_repository_pull_requests(full_repo_name, state: "open") do
+      prs = Enum.map(response, fn pr -> %{number: pr["number"], title: pr["title"]} end)
+      {:ok, prs}
+    end
+  end
 
   # github_org が未設定（nil / 空）なら明示エラーにする（issue #45）。
   # config は github_org を registry_repo の owner から導出するため、通常は

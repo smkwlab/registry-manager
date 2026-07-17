@@ -116,5 +116,26 @@ defmodule RegistryManager.CSVIntegrationTest do
       assert {:ok, "grad-user"} = Repository.get_github_username_from_csv("k22rs004")
       assert {:ok, "grad-user"} = Repository.get_github_username_from_csv("k26gjk01")
     end
+
+    test "load_roster/0 returns one entry per person with graduation columns" do
+      assert {:ok, roster} = Repository.load_roster()
+
+      taro = Enum.find(roster, &("k21rs001" in &1.student_ids))
+      assert taro.name == "テスト太郎"
+      assert taro.github == "taro-yamada"
+
+      grad = Enum.find(roster, &("k26gjk01" in &1.student_ids))
+      assert grad.name == "テスト院生"
+      assert "k22rs004" in grad.student_ids
+      assert grad.graduation_year == "2025"
+      assert grad.graduate_student_id == "26gjk01"
+    end
+
+    test "load_roster/0 skips teacher and blank rows (no student id)" do
+      assert {:ok, roster} = Repository.load_roster()
+      # 教員行（テスト教授）は学籍番号を持たないため含まれない
+      refute Enum.any?(roster, &(&1.name == "テスト教授"))
+      assert Enum.all?(roster, &(&1.student_ids != []))
+    end
   end
 end

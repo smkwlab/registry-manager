@@ -162,6 +162,25 @@ defmodule RegistryManager.CLITest do
       assert {:cache, ["refresh"], []} = result
     end
 
+    test "parses archive command with a repository name" do
+      assert {:archive, ["k21rs001-sotsuron"], []} =
+               CLI.parse_command(["archive", "k21rs001-sotsuron"], [])
+    end
+
+    test "parses archive --graduated (batch) without a repository name" do
+      assert {:archive, [], opts} = CLI.parse_args(["archive", "--graduated"])
+      assert opts[:graduated] == true
+    end
+
+    test "parses archive --graduated --list" do
+      assert {:archive, [], opts} = CLI.parse_args(["archive", "--graduated", "--list"])
+      assert opts[:list] == true
+    end
+
+    test "archive without repo and without --graduated returns help" do
+      assert :help = CLI.parse_command(["archive"], [])
+    end
+
     test "returns help for unknown command" do
       result = CLI.parse_command(["unknown"], [])
       assert :help = result
