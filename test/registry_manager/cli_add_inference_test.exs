@@ -35,10 +35,15 @@ defmodule RegistryManager.CLIAddInferenceTest do
       Application.put_env(:registry_manager, :env, :test)
       Application.put_env(:registry_manager, :use_github_mock, true)
 
-      # github_org を固定（issue #45 で既定を廃止したため、CLI 経由の inference で
-      # owner/repo の組み立てを実 config に依存させず決定的にする）。CLI が
-      # cli_overrides を再設定するため env var 側で固定する
-      System.put_env("REGISTRY_MANAGER_GITHUB_ORG", "smkwlab")
+      # github_org を固定（issue #45 で既定を廃止したため、inference で owner/repo の
+      # 組み立てを実 config に依存させず決定的にする）。config 最優先の cli_overrides で
+      # 与える（issue #55）。OS グローバルな REGISTRY_MANAGER_GITHUB_ORG は config_test の
+      # System.delete_env と共有され、タイミングによって取りこぼされて flaky になるため
+      # 使わない。これらのテストは CLI.process/1 を直接呼び parse_args を経ないので
+      # cli_overrides は再設定されず残る。
+      # 従前値は退避し on_exit で復元する（無条件 delete で他テストの値を消さない）。
+      prev_overrides = Application.get_env(:registry_manager, :cli_overrides)
+      Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
 
       # Reset mock responses for clean state
       GitHubAPIMock.reset_mock_responses()
@@ -48,7 +53,12 @@ defmodule RegistryManager.CLIAddInferenceTest do
         Application.delete_env(:registry_manager, :test_output)
         Application.put_env(:registry_manager, :env, :test)
         Application.delete_env(:registry_manager, :use_github_mock)
-        System.delete_env("REGISTRY_MANAGER_GITHUB_ORG")
+
+        case prev_overrides do
+          nil -> Application.delete_env(:registry_manager, :cli_overrides)
+          val -> Application.put_env(:registry_manager, :cli_overrides, val)
+        end
+
         GitHubAPIMock.reset_mock_responses()
       end)
 
