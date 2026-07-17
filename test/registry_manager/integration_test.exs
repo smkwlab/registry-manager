@@ -207,31 +207,50 @@ defmodule RegistryManager.IntegrationTest do
       # activity キャッシュをクリア（先行テストのデータ混入を防ぐ）
       Cache.run(["clear"], [])
 
+      # get_repositories_json を固定レスポンス（1 件以上）に明示設定する。
+      # activity フローの対象リポジトリが 0 件だと get_repository_activity が
+      # 一度も呼ばれず first_count == 0 となり、キャッシュとは無関係な理由で
+      # テストが落ちてしまう。前提をモックのデフォルトに委ねず自己完結させる。
+      registry_data = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "created_at" => "2025-01-01T00:00:00Z",
+          "registry_updated_at" => "2025-01-01T00:00:00Z"
+        }
+      }
+
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+        {:ok, {registry_data, "test-sha"}}
+      end)
+
       {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+      # クリーンアップは on_exit で行い、assert 失敗時も確実に実行されるようにする。
+      # counter はテストプロセスにリンクされ終了時に自動で停止するため、
+      # ここでは stop せずモック設定とキャッシュのみリセットする。
+      on_exit(fn ->
+        GitHubAPIMock.reset_mock_responses()
+        Cache.run(["clear"], [])
+      end)
 
       GitHubAPIMock.set_mock_response(:get_repository_activity, fn _repo, _opts ->
         Agent.update(counter, &(&1 + 1))
         {:ok, "2025-07-01T12:00:00Z"}
       end)
 
-      try do
-        # 1 回目: キャッシュが cold なので API（get_repository_activity）を叩く
-        assert {:ok, _} = List.run([], activity: true)
-        first_count = Agent.get(counter, & &1)
-        assert first_count > 0, "初回は API (get_repository_activity) が呼ばれるはず"
+      # 1 回目: キャッシュが cold なので API（get_repository_activity）を叩く
+      assert {:ok, _} = List.run([], activity: true)
+      first_count = Agent.get(counter, & &1)
+      assert first_count > 0, "初回は API (get_repository_activity) が呼ばれるはず"
 
-        # 2 回目: キャッシュが warm なので API を叩かず、呼び出し回数は変わらない
-        assert {:ok, _} = List.run([], activity: true)
-        second_count = Agent.get(counter, & &1)
+      # 2 回目: キャッシュが warm なので API を叩かず、呼び出し回数は変わらない
+      assert {:ok, _} = List.run([], activity: true)
+      second_count = Agent.get(counter, & &1)
 
-        assert second_count == first_count,
-               "キャッシュ warm 後は追加の API 呼び出しが発生しないはず " <>
-                 "(first=#{first_count}, second=#{second_count})"
-      after
-        Agent.stop(counter)
-        GitHubAPIMock.reset_mock_responses()
-        Cache.run(["clear"], [])
-      end
+      assert second_count == first_count,
+             "キャッシュ warm 後は追加の API 呼び出しが発生しないはず " <>
+               "(first=#{first_count}, second=#{second_count})"
     end
 
     test "list command completes in reasonable time" do
