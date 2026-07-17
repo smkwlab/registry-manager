@@ -284,6 +284,7 @@ defmodule RegistryManager.Commands.Archive do
   defp format_interactive(transcript, exec_results, write_result) do
     executed = Enum.count(exec_results, fn {_repo, res} -> match?({:ok, _}, res) end)
     header = "対話 archive 完了（#{executed} 件を archive）"
+
     # transcript は interactive_loop で Enum.reverse 済み＝提示順（先頭が最初の候補）
     lines = [header] ++ transcript ++ ["", format_write_line(write_result)]
     Enum.join(lines, "\n")
