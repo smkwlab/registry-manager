@@ -174,12 +174,13 @@ defmodule RegistryManager.Commands.ArchiveTest do
         {:ok, "ok"}
       end)
 
+      # interactive の実行分岐は opts 側（run/3 の 2 引数目）で判定するため、
+      # test_params には interactive を含めない。応答注入は :inputs のみで足りる。
       base_params(
         [
           mock_archive: true,
           open_prs: %{},
           now: "2026-07-17T00:00:00Z",
-          interactive: true,
           inputs: inputs
         ] ++ extra
       )
@@ -238,7 +239,6 @@ defmodule RegistryManager.Commands.ArchiveTest do
         base_params(
           mock_archive: true,
           open_prs: %{},
-          interactive: true,
           inputs: ["q"]
         )
 
@@ -265,7 +265,6 @@ defmodule RegistryManager.Commands.ArchiveTest do
         base_params(
           mock_archive: true,
           open_prs: %{},
-          interactive: true,
           inputs: []
         )
 

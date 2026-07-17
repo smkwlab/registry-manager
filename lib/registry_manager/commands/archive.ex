@@ -214,6 +214,7 @@ defmodule RegistryManager.Commands.Archive do
 
   # 有効な応答（y/n/a/q）が得られるまで読み取る。入力終端（eof / 注入列の枯渇）は
   # 中断（q）として扱う。無効な入力は本番でのみ注意表示して再入力を促す。
+  # 無効入力時の再帰は末尾位置（TCO 対象）なのでスタックは伸びない。
   defp prompt_answer(cand, inputs, test_params) do
     {raw, rest} = read_line(prompt_text(cand, test_params), inputs)
 
@@ -283,6 +284,7 @@ defmodule RegistryManager.Commands.Archive do
   defp format_interactive(transcript, exec_results, write_result) do
     executed = Enum.count(exec_results, fn {_repo, res} -> match?({:ok, _}, res) end)
     header = "対話 archive 完了（#{executed} 件を archive）"
+    # transcript は interactive_loop で Enum.reverse 済み＝提示順（先頭が最初の候補）
     lines = [header] ++ transcript ++ ["", format_write_line(write_result)]
     Enum.join(lines, "\n")
   end
