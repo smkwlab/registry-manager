@@ -243,6 +243,21 @@ defmodule RegistryManager.Commands.ValidateTest do
       assert String.contains?(output, "No timestamp fields found")
     end
 
+    test "warns when only the legacy updated_at field is present" do
+      repos = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "updated_at" => "2025-07-08 10:00:00 UTC"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Legacy entries: 1")
+      assert String.contains?(output, "Legacy updated_at field detected")
+    end
+
     test "warns on the legacy updated_at field" do
       repos = %{
         "k21rs001-sotsuron" => %{
