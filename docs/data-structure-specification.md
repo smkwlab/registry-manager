@@ -20,8 +20,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
   "repository_name": {
     "student_id": "k91rs044",
     "repository_type": "wr",
-    "repository_created_at": "2025-07-08T06:51:39.835808Z",
-    "registry_created_at": "2025-07-08T15:00:00.000000Z",
+    "created_at": "2025-07-08T06:51:39.835808Z",
     "registry_updated_at": "2025-07-08T15:30:00.000000Z",
     "github_username": ["mockuser3"],
     "protection_status": "protected"
@@ -55,11 +54,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
    - `status`: 削除対象（設計上不要）
    - `stage`: 削除対象（設計上不要）
 
-3. **時刻フィールドの不足**
-   - 旧エントリに `repository_created_at` と `registry_created_at` が不足
-   - 3つの時刻フィールドへの統一が必要
-
-4. **時刻形式の不統一**
+3. **時刻形式の不統一**
    - 新: ISO8601形式（`2025-07-08T06:51:39.835808Z`）
    - 旧: カスタム形式（`2025-07-06 16:20:06 UTC`）
 
@@ -77,8 +72,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
   "repository_name": {
     "student_id": "string",
     "repository_type": "string",
-    "repository_created_at": "string (ISO8601)",
-    "registry_created_at": "string (ISO8601)",
+    "created_at": "string (ISO8601)",
     "registry_updated_at": "string (ISO8601)",
     "github_username": ["string"],
     "protection_status": "string"
@@ -94,9 +88,8 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 |-------------|---|------|------|---------|
 | `student_id` | string | 学生ID | 形式: `k##[a-z]{2}###` | 推論または手動指定 |
 | `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `ise-report`, `sotsuron`, `master`, `latex`, `other` | 推論または手動指定 |
-| `repository_created_at` | string | リポジトリ作成日時 | ISO8601形式 | GitHub API |
-| `registry_created_at` | string | レジストリ初回登録日時 | ISO8601形式 | registry-manager |
-| `registry_updated_at` | string | レジストリ最終更新日時 | ISO8601形式 | registry-manager |
+| `created_at` | string | リポジトリ作成日時 | ISO8601形式（小数秒可）。少なくとも `created_at` か `registry_updated_at` の一方が必要 | GitHub API |
+| `registry_updated_at` | string | レジストリ最終更新日時 | ISO8601形式（小数秒可）。少なくとも `created_at` か `registry_updated_at` の一方が必要 | registry-manager / 登録自動化 |
 | `github_username` | string[] | GitHubユーザー名（複数オーナー対応） | GitHub ID の配列。レガシーの string 形式も読み込み時に配列へ正規化される（`Compatibility.normalize_github_username/1`） | GitHub API または推論 |
 
 #### 2.2.2 任意フィールド
@@ -105,14 +98,15 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 |-------------|---|------|------|------------|
 | `protection_status` | string | ブランチ保護状態 | 値: `protected`, `unprotected`, `unknown` | `unknown` |
 
-#### 2.2.3 削除予定フィールド
+#### 2.2.3 廃止フィールド
 
-| フィールド名 | 削除理由 | 代替手段 |
+データからは除去済み。validate が再流入を警告する。
+
+| フィールド名 | 廃止理由 | 代替手段 |
 |-------------|---------|---------|
 | `status` | 設計上不要 | リポジトリタイプで判断 |
 | `stage` | 設計上不要 | リポジトリタイプで判断 |
 | `updated_at` | 命名不統一 | `registry_updated_at` を使用 |
-| `created_at` | 曖昧な命名 | `repository_created_at` と `registry_created_at` に分離 |
 
 ### 2.3 リポジトリタイプ仕様
 
@@ -301,12 +295,8 @@ iso8601_pattern = ~r/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/
 - 例: `k21rs001-wr` → `repository_type` は `wr` である必要
 
 **時刻整合性**:
-- `repository_created_at` <= `registry_created_at` <= `registry_updated_at`
+- 通常は `created_at` <= `registry_updated_at`（リポジトリ作成後にレジストリが更新される）
 - 未来の時刻は不可
-- **例外**: 旧形式から移行したエントリでは `registry_created_at` を
-  `updated_at` で補完する場合があり（5.1.1）、この順序が成立しない
-  ことがある。時刻整合性は新規登録エントリに対する制約であり、
-  移行データでは警告扱いとする
 
 ## 5. データ移行仕様
 

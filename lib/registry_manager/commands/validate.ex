@@ -168,33 +168,26 @@ defmodule RegistryManager.Commands.Validate do
     end
   end
 
+  # 現行スキーマのタイムスタンプ: created_at（リポジトリ作成時刻）と
+  # registry_updated_at（レジストリ最終更新）。どちらも単独で成立し得るため
+  # 「少なくとも一方」を要求する。旧 updated_at は再流入ガードとして警告する
+  @timestamp_fields ["created_at", "registry_updated_at"]
+
   defp validate_timestamps(data) do
-    # 新形式の3フィールドチェック
-    new_fields = ["repository_created_at", "registry_created_at", "registry_updated_at"]
-    present_new_fields = Enum.filter(new_fields, &Map.has_key?(data, &1))
+    present = Enum.filter(@timestamp_fields, &Map.has_key?(data, &1))
+    legacy? = Map.has_key?(data, "updated_at")
 
-    # レガシー形式のフィールドチェック
-    legacy_fields = ["created_at", "updated_at"]
-    present_legacy_fields = Enum.filter(legacy_fields, &Map.has_key?(data, &1))
-
-    cond do
-      length(present_new_fields) == 3 ->
-        # 新形式の検証
-        validate_timestamp_formats(data, new_fields)
-
-      not Enum.empty?(present_legacy_fields) ->
-        # レガシー形式
-        {:warning, "Legacy timestamp format detected"}
-
-      not Enum.empty?(present_new_fields) ->
-        # 部分的な新形式（不完全）
-        missing = new_fields -- present_new_fields
-        {:error, "Missing required timestamp fields: #{Enum.join(missing, ", ")}"}
-
-      true ->
-        {:error, "No timestamp fields found"}
+    if Enum.empty?(present) and not legacy? do
+      {:error, "No timestamp fields found"}
+    else
+      data
+      |> validate_timestamp_formats(present)
+      |> apply_legacy_warning(legacy?)
     end
   end
+
+  defp apply_legacy_warning(:ok, true), do: {:warning, "Legacy updated_at field detected"}
+  defp apply_legacy_warning(result, _legacy?), do: result
 
   defp validate_timestamp_formats(data, fields) do
     invalid_fields = Enum.filter(fields, &invalid_timestamp_field?(data, &1))

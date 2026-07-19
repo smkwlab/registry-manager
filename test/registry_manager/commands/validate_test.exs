@@ -8,8 +8,7 @@ defmodule RegistryManager.Commands.ValidateTest do
     "k21rs001-sotsuron" => %{
       "student_id" => "k21rs001",
       "repository_type" => "sotsuron",
-      "repository_created_at" => "2025-07-08T06:51:39.835808Z",
-      "registry_created_at" => "2025-07-08T15:00:00.000000Z",
+      "created_at" => "2025-07-08T06:51:39.835808Z",
       "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
       "github_username" => "student001",
       "protection_status" => "protected"
@@ -17,8 +16,7 @@ defmodule RegistryManager.Commands.ValidateTest do
     "k21rs002-wr" => %{
       "student_id" => "k21rs002",
       "repository_type" => "wr",
-      "repository_created_at" => "2025-07-07T10:20:00.000000Z",
-      "registry_created_at" => "2025-07-07T18:00:00.000000Z",
+      "created_at" => "2025-07-07T10:20:00.000000Z",
       "registry_updated_at" => "2025-07-09T10:00:00.000000Z",
       "github_username" => "student002",
       "protection_status" => "not_protected"
@@ -30,8 +28,7 @@ defmodule RegistryManager.Commands.ValidateTest do
     "k21rs001-sotsuron" => %{
       "student_id" => "k21rs001",
       "repository_type" => "sotsuron",
-      "repository_created_at" => "2025-07-08T06:51:39.835808Z",
-      "registry_created_at" => "2025-07-08T15:00:00.000000Z",
+      "created_at" => "2025-07-08T06:51:39.835808Z",
       "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
       "github_username" => "student001"
     },
@@ -57,20 +54,20 @@ defmodule RegistryManager.Commands.ValidateTest do
     "invalid-id-repo" => %{
       "student_id" => "invalid123",
       "repository_type" => "sotsuron",
-      "repository_created_at" => "2025-07-08T06:51:39.835808Z"
+      "created_at" => "2025-07-08T06:51:39.835808Z"
     },
     # リポジトリ名と学生IDの不一致
     "k21rs001-sotsuron" => %{
       # 不一致
       "student_id" => "k21rs002",
       "repository_type" => "sotsuron",
-      "repository_created_at" => "2025-07-08T06:51:39.835808Z"
+      "created_at" => "2025-07-08T06:51:39.835808Z"
     },
     # 不正なリポジトリタイプ
     "k21rs003-unknown" => %{
       "student_id" => "k21rs003",
       "repository_type" => "unknown_type",
-      "repository_created_at" => "2025-07-08T06:51:39.835808Z"
+      "created_at" => "2025-07-08T06:51:39.835808Z"
     }
   }
 
@@ -195,13 +192,12 @@ defmodule RegistryManager.Commands.ValidateTest do
   end
 
   describe "run/3 - timestamp validation" do
-    test "validates new 3-field timestamp format" do
+    test "accepts the current schema (created_at + registry_updated_at, fractional seconds ok)" do
       repo_with_timestamps = %{
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
-          "repository_created_at" => "2025-07-08T06:51:39.835808Z",
-          "registry_created_at" => "2025-07-08T15:00:00.000000Z",
+          "created_at" => "2025-07-08T06:51:39.835808Z",
           "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
         }
       }
@@ -213,22 +209,70 @@ defmodule RegistryManager.Commands.ValidateTest do
       assert String.contains?(output, "Valid entries: 1")
     end
 
-    test "detects missing timestamp fields" do
-      repo_missing_timestamps = %{
+    test "accepts a partial set of timestamp fields (each field is optional)" do
+      repos = %{
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
-          "repository_created_at" => "2025-07-08T06:51:39.835808Z"
-          # registry_created_at と registry_updated_at が不足
+          "created_at" => "2025-07-08T06:51:39.835808Z"
+        },
+        "k21rs002-wr" => %{
+          "student_id" => "k21rs002",
+          "repository_type" => "wr",
+          "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
         }
       }
 
-      opts = []
+      {:ok, output} = Validate.run([], [], repositories: repos)
 
-      {:ok, output} = Validate.run([], opts, repositories: repo_missing_timestamps)
+      assert String.contains?(output, "Valid entries: 2")
+      assert String.contains?(output, "Invalid entries: 0")
+    end
+
+    test "rejects entries with no timestamp fields" do
+      repos = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
 
       assert String.contains?(output, "Invalid entries: 1")
-      assert String.contains?(output, "Missing required timestamp fields")
+      assert String.contains?(output, "No timestamp fields found")
+    end
+
+    test "warns when only the legacy updated_at field is present" do
+      repos = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "updated_at" => "2025-07-08 10:00:00 UTC"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Legacy entries: 1")
+      assert String.contains?(output, "Legacy updated_at field detected")
+    end
+
+    test "warns on the legacy updated_at field" do
+      repos = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "created_at" => "2025-07-08T06:51:39.835808Z",
+          "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
+          "updated_at" => "2025-07-08 10:00:00 UTC"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Legacy entries: 1")
+      assert String.contains?(output, "Legacy updated_at field detected")
     end
 
     test "validates timestamp format correctness" do
@@ -236,8 +280,7 @@ defmodule RegistryManager.Commands.ValidateTest do
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
-          "repository_created_at" => "invalid-timestamp",
-          "registry_created_at" => "2025-07-08T15:00:00.000000Z",
+          "created_at" => "invalid-timestamp",
           "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
         }
       }
@@ -257,8 +300,7 @@ defmodule RegistryManager.Commands.ValidateTest do
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
-          "repository_created_at" => "2025-07-08T06:51:39.835808Z",
-          "registry_created_at" => "2025-07-08T15:00:00.000000Z",
+          "created_at" => "2025-07-08T06:51:39.835808Z",
           "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
           "protection_status" => "invalid_status"
         }
@@ -290,8 +332,7 @@ defmodule RegistryManager.Commands.ValidateTest do
               %{
                 "student_id" => student_id,
                 "repository_type" => "sotsuron",
-                "repository_created_at" => "2025-07-08T06:51:39.835808Z",
-                "registry_created_at" => "2025-07-08T15:00:00.000000Z",
+                "created_at" => "2025-07-08T06:51:39.835808Z",
                 "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
               }
             end
