@@ -423,54 +423,17 @@ defmodule RegistryManager.Commands.PrStatus do
     # オープンなPR一覧を取得
     case Client.get_repository_pull_requests(full_repo_name, state: "open") do
       {:ok, prs} when is_list(prs) ->
-        # Issue #118: PR オブジェクトから直接 requested_reviewers を取得してAPIコールを削減
-        has_pending =
-          Enum.any?(prs, fn pr ->
-            check_single_pr_for_pending_review(full_repo_name, pr, username)
-          end)
+        # requested_reviewers への所属がそのまま「いまレビュー待ちか」を表す
+        # （GitHub はレビュー提出でユーザーを外し、再リクエストで戻すため、
+        # 過去のレビュー提出履歴を別途確認すると再リクエストされた PR を
+        # 誤って除外してしまう。Issue #58）
+        has_pending = Enum.any?(prs, &Parser.pr_awaiting_review_from?(&1, username))
 
         {:ok, has_pending}
 
       {:error, reason} ->
         Logger.debug("Failed to get PRs for #{repo_name}: #{inspect(reason)}")
         {:error, reason}
-    end
-  end
-
-  # Issue #118: PR オブジェクトから直接 requested_reviewers を取得
-  # 以前は個別に get_pull_request_requested_reviewers API を呼んでいたが、
-  # GET /pulls レスポンスに含まれる requested_reviewers を使用してAPIコールを削減
-  defp check_single_pr_for_pending_review(full_repo_name, pr, username) do
-    pr_number = Map.get(pr, "number")
-    # PR オブジェクトから直接 requested_reviewers を抽出
-    requested = Parser.extract_requested_reviewers(pr)
-    check_if_user_has_unreviewed_request(full_repo_name, pr_number, username, requested)
-  end
-
-  defp check_if_user_has_unreviewed_request(full_repo_name, pr_number, username, requested) do
-    if Parser.user_has_pending_review_request?(requested, username) do
-      # レビュー済みかどうかを確認
-      check_if_review_not_submitted(full_repo_name, pr_number, username)
-    else
-      false
-    end
-  end
-
-  defp check_if_review_not_submitted(full_repo_name, pr_number, username) do
-    require Logger
-
-    case Client.get_pull_request_reviews(full_repo_name, pr_number, []) do
-      {:ok, reviews} ->
-        not Parser.user_has_submitted_review?(reviews, username)
-
-      {:error, reason} ->
-        # Issue #118: エラー発生時のログ出力を追加
-        Logger.warning(
-          "Failed to get reviews for #{full_repo_name}##{pr_number}: #{inspect(reason)}, assuming pending"
-        )
-
-        # レビュー情報が取得できない場合はペンディングとみなす
-        true
     end
   end
 

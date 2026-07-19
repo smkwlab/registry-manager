@@ -441,6 +441,40 @@ defmodule RegistryManager.Commands.PrStatusTest do
       refute String.contains?(output, "k95gjk03-wakate-ronbun")
     end
 
+    test "review_requested defaults to updated_at descending order end to end" do
+      # Issue #58: GitHub の review-requested 一覧と同じ並び（updated_at 降順）に
+      # なることをパイプライン全体で保証する（明示 sort なし）
+      test_params = [
+        repositories: @test_repositories,
+        pr_data: @test_pr_data,
+        current_user: "testuser",
+        pending_reviews: %{
+          "k21rs001-sotsuron" => true,
+          "k21rs002-wr" => true,
+          "k21rs003-ise" => true,
+          "k94gjk01-master" => true,
+          "k94gjk02-master" => true,
+          "k95gjk03-wakate-ronbun" => true
+        }
+      ]
+
+      {:ok, output} = PrStatus.run([], [format: "csv", review_requested: true], test_params)
+
+      lines = String.split(output, "\n", trim: true) |> tl()
+      repos = Enum.map(lines, fn line -> String.split(line, ",") |> hd() end)
+
+      expected_order = [
+        "k21rs003-ise",
+        "k94gjk01-master",
+        "k21rs001-sotsuron",
+        "k94gjk02-master",
+        "k21rs002-wr",
+        "k95gjk03-wakate-ronbun"
+      ]
+
+      assert repos == expected_order
+    end
+
     test "shows all repos when review_requested is false" do
       test_params = [
         repositories: @test_repositories,

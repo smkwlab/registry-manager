@@ -364,40 +364,23 @@ defmodule RegistryManager.GitHubAPI.Parser do
 
   def user_has_pending_review_request?(_, _), do: false
 
-  # 提出済みとみなすレビュー状態（PENDINGは除外）
-  @submitted_review_states ["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"]
-
   @doc """
-  レビュー履歴から指定ユーザーがレビューを提出済みか判定
+  PR オブジェクトが指定ユーザーのレビュー待ちか判定
 
-  Returns `true` if the username is found among review submitters (case-insensitive),
-  `false` otherwise or for invalid inputs.
-  Note: PENDING reviews are not considered as submitted.
+  GitHub はレビュー提出時にユーザーを `requested_reviewers` から外し、
+  レビュー再リクエストで戻すため、`requested_reviewers` への所属が
+  そのまま「いまレビュー待ちか」を表す（過去のレビュー提出履歴は見ない）。
+
+  Returns `true` if the username is currently in the PR's requested
+  reviewers (case-insensitive), `false` otherwise or for invalid inputs.
   """
-  def user_has_submitted_review?(reviews, username)
-      when is_list(reviews) and is_binary(username) do
-    reviews
-    |> Enum.any?(fn review ->
-      state = Map.get(review, "state")
-      user_login = get_in(review, ["user", "login"])
-
-      submitted_state?(state) and matches_username?(user_login, username)
-    end)
+  def pr_awaiting_review_from?(pr, username) when is_map(pr) and is_binary(username) do
+    pr
+    |> extract_requested_reviewers()
+    |> user_has_pending_review_request?(username)
   end
 
-  def user_has_submitted_review?(_, _), do: false
-
-  defp submitted_state?(state) when is_binary(state) do
-    state in @submitted_review_states
-  end
-
-  defp submitted_state?(_), do: false
-
-  defp matches_username?(login, username) when is_binary(login) and is_binary(username) do
-    String.downcase(login) == String.downcase(username)
-  end
-
-  defp matches_username?(_, _), do: false
+  def pr_awaiting_review_from?(_, _), do: false
 
   # プライベート関数
 
