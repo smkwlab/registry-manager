@@ -516,6 +516,9 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
 
   describe "pr_awaiting_review_from?/2" do
     test "returns true when user is in the PR's requested_reviewers" do
+      # requested_reviewers への所属だけで「いまレビュー待ちか」が決まる。
+      # GitHub はレビュー提出でユーザーを requested_reviewers から外し、
+      # 再リクエストで戻すため、過去のレビュー提出履歴(reviews)は参照しない
       pr = %{
         "number" => 3,
         "requested_reviewers" => [%{"login" => "prof-a"}],
@@ -533,19 +536,6 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
       }
 
       assert Parser.pr_awaiting_review_from?(pr, "prof-a") == false
-    end
-
-    test "re-requested PR is awaiting review even if the user reviewed before" do
-      # GitHub はレビュー提出でユーザーを requested_reviewers から外し、
-      # 再リクエストで戻す。したがって requested_reviewers への所属だけが
-      # 「いまレビュー待ちか」を決め、過去のレビュー提出履歴は無関係
-      pr = %{
-        "number" => 3,
-        "requested_reviewers" => [%{"login" => "prof-a"}],
-        "requested_teams" => []
-      }
-
-      assert Parser.pr_awaiting_review_from?(pr, "prof-a") == true
     end
 
     test "is case insensitive" do

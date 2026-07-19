@@ -463,6 +463,13 @@ defmodule RegistryManager.Commands.PrStatusTest do
       lines = String.split(output, "\n", trim: true) |> tl()
       repos = Enum.map(lines, fn line -> String.split(line, ",") |> hd() end)
 
+      # Expected order by @test_pr_data updated_at descending:
+      # k21rs003-ise: 2024-01-25T16:45:00Z
+      # k94gjk01-master: 2024-01-22T10:00:00Z
+      # k21rs001-sotsuron: 2024-01-20T15:30:00Z
+      # k94gjk02-master: 2024-01-15T11:00:00Z
+      # k21rs002-wr: 2024-01-10T14:20:00Z
+      # k95gjk03-wakate-ronbun: 2024-01-05T12:00:00Z
       expected_order = [
         "k21rs003-ise",
         "k94gjk01-master",
