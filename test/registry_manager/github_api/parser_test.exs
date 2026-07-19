@@ -514,68 +514,37 @@ defmodule RegistryManager.GitHubAPI.ParserTest do
     end
   end
 
-  describe "user_has_submitted_review?/2" do
-    test "returns true when user has submitted a review" do
-      reviews = [
-        %{"user" => %{"login" => "user1"}, "state" => "APPROVED"},
-        %{"user" => %{"login" => "user2"}, "state" => "COMMENTED"}
-      ]
+  describe "pr_awaiting_review_from?/2" do
+    test "returns true when user is in the PR's requested_reviewers" do
+      # requested_reviewers への所属だけで「いまレビュー待ちか」が決まる。
+      # GitHub はレビュー提出でユーザーを requested_reviewers から外し、
+      # 再リクエストで戻すため、過去のレビュー提出履歴(reviews)は参照しない
+      pr = %{
+        "number" => 3,
+        "requested_reviewers" => [%{"login" => "prof-a"}],
+        "requested_teams" => []
+      }
 
-      assert Parser.user_has_submitted_review?(reviews, "user1") == true
-      assert Parser.user_has_submitted_review?(reviews, "user2") == true
+      assert Parser.pr_awaiting_review_from?(pr, "prof-a") == true
     end
 
-    test "returns false when user has not submitted a review" do
-      reviews = [
-        %{"user" => %{"login" => "user1"}, "state" => "APPROVED"}
-      ]
+    test "returns false when user is not in requested_reviewers" do
+      pr = %{
+        "number" => 3,
+        "requested_reviewers" => [%{"login" => "other-prof"}],
+        "requested_teams" => []
+      }
 
-      assert Parser.user_has_submitted_review?(reviews, "user3") == false
+      assert Parser.pr_awaiting_review_from?(pr, "prof-a") == false
     end
 
     test "is case insensitive" do
-      reviews = [
-        %{"user" => %{"login" => "User1"}, "state" => "APPROVED"}
-      ]
-
-      assert Parser.user_has_submitted_review?(reviews, "user1") == true
-      assert Parser.user_has_submitted_review?(reviews, "USER1") == true
+      pr = %{"requested_reviewers" => [%{"login" => "Prof-A"}], "requested_teams" => []}
+      assert Parser.pr_awaiting_review_from?(pr, "prof-a") == true
     end
 
-    test "returns false for empty reviews" do
-      assert Parser.user_has_submitted_review?([], "user1") == false
-    end
-
-    test "returns false for invalid inputs" do
-      assert Parser.user_has_submitted_review?(nil, "user1") == false
-      assert Parser.user_has_submitted_review?([], nil) == false
-    end
-
-    test "returns false for PENDING reviews (not yet submitted)" do
-      # Issue #115: PENDING reviews should not be considered as submitted
-      reviews = [
-        %{"user" => %{"login" => "reviewer1"}, "state" => "PENDING"}
-      ]
-
-      assert Parser.user_has_submitted_review?(reviews, "reviewer1") == false
-    end
-
-    test "distinguishes between PENDING and submitted review states" do
-      reviews = [
-        %{"user" => %{"login" => "reviewer1"}, "state" => "PENDING"},
-        %{"user" => %{"login" => "reviewer2"}, "state" => "APPROVED"},
-        %{"user" => %{"login" => "reviewer3"}, "state" => "CHANGES_REQUESTED"},
-        %{"user" => %{"login" => "reviewer4"}, "state" => "COMMENTED"},
-        %{"user" => %{"login" => "reviewer5"}, "state" => "DISMISSED"}
-      ]
-
-      # PENDING should not count as submitted
-      assert Parser.user_has_submitted_review?(reviews, "reviewer1") == false
-      # All other states should count as submitted
-      assert Parser.user_has_submitted_review?(reviews, "reviewer2") == true
-      assert Parser.user_has_submitted_review?(reviews, "reviewer3") == true
-      assert Parser.user_has_submitted_review?(reviews, "reviewer4") == true
-      assert Parser.user_has_submitted_review?(reviews, "reviewer5") == true
+    test "returns false for a PR object without reviewer fields" do
+      assert Parser.pr_awaiting_review_from?(%{"number" => 1}, "prof-a") == false
     end
   end
 
