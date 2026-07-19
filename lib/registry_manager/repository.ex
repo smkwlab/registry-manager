@@ -277,6 +277,10 @@ defmodule RegistryManager.Repository do
       # Remove org prefix from repo_name for storage
       base_repo_name = String.replace(repo_name, ~r{^[^/]+/}, "")
 
+      # --type による明示指定は名前からの推論より優先する
+      # （poster など、リポジトリ名に規則がなく推論できないタイプのため）
+      inferred_data = %{inferred_data | repo_type: opts[:type] || inferred_data.repo_type}
+
       with :ok <-
              validate_add_request_for_inference(
                base_repo_name,

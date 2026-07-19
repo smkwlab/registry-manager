@@ -20,6 +20,21 @@ defmodule RegistryManager.CLIAddInferenceTest do
                CLI.parse_command(["add", "k21rs001-sotsuron", "k21rs001", "sotsuron"], [])
     end
 
+    test "passes --type through in single-argument form" do
+      assert {:add_auto, "k21rs001-jsai2026", [type: "other"]} =
+               CLI.parse_command(["add", "k21rs001-jsai2026"], type: "other")
+    end
+
+    test "rejects --type combined with the three-argument form" do
+      assert {:error, message} =
+               CLI.parse_command(
+                 ["add", "k21rs001-sotsuron", "k21rs001", "sotsuron"],
+                 type: "other"
+               )
+
+      assert message =~ "--type"
+    end
+
     test "returns help for invalid add command" do
       assert :help = CLI.parse_command(["add"], [])
       # Commands with 4+ arguments trigger old format error message
@@ -91,6 +106,37 @@ defmodule RegistryManager.CLIAddInferenceTest do
 
       output = Application.get_env(:registry_manager, :test_output)
       assert output =~ "✅"
+    end
+
+    test "--type overrides the type inferred from the repository name" do
+      test_pid = self()
+
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+        {:ok,
+         %{
+           "owner" => %{"login" => "taro-yamada"},
+           "created_at" => "2025-01-01T00:00:00Z"
+         }}
+      end)
+
+      GitHubAPIMock.set_mock_response(
+        :update_repositories_json,
+        fn new_data, _sha, _message ->
+          send(test_pid, {:updated_data, new_data})
+          {:ok, "Success"}
+        end
+      )
+
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+        {:ok, {%{}, "mock_sha"}}
+      end)
+
+      # 名前からは sotsuron と推論されるリポジトリを --type other で登録する
+      assert catch_throw(CLI.process({:add_auto, "k21rs001-sotsuron", [type: "other"]})) ==
+               {:cli_test_exit, 0}
+
+      assert_received {:updated_data, new_data}
+      assert new_data["k21rs001-sotsuron"]["repository_type"] == "other"
     end
 
     test "shows verbose output when requested" do

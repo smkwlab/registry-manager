@@ -126,12 +126,19 @@ defmodule RegistryManager.CLI.Spec do
     %{
       name: "add",
       aliases: [],
-      usage: ["add <repo_name>", "add <repo_name> <student_id> <repo_type>"],
+      usage: [
+        "add <repo_name> [--type <repo_type>]",
+        "add <repo_name> <student_id> <repo_type>"
+      ],
       summary: "リポジトリ情報を新規登録（1引数: 推論形式・推奨 / 3引数: 明示的形式）",
-      options: [:dry_run],
+      options: [
+        :dry_run,
+        {:type, %{doc: "リポジトリタイプの推論を上書き（1引数形式のみ。名前に規則がない場合に使用）"}}
+      ],
       examples: [
         "add k21rs001-sotsuron",
         "add myorg/k21rs001-wr",
+        "add k21rs001-jsai2026 --type other",
         "add k21rs001-sotsuron k21rs001 sotsuron"
       ]
     },
