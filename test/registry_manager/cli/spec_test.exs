@@ -107,6 +107,12 @@ defmodule RegistryManager.CLI.SpecTest do
       assert {:error, _} = Spec.validate_opts("propagate-workflow", all: true, type: "bogus")
     end
 
+    test "add --type is accepted and enum-validated" do
+      assert :ok = Spec.validate_opts("add", type: "other")
+      assert {:error, message} = Spec.validate_opts("add", type: "bogus")
+      assert message =~ "bogus"
+    end
+
     test "reports all violations at once" do
       assert {:error, message} = Spec.validate_opts("list", type: "bogus", state: "open")
       assert message =~ "--type"

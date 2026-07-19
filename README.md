@@ -112,6 +112,9 @@ mix escript.build
 # リポジトリ情報追加（リポジトリ名から学生ID・種別を推論）
 ./registry-manager add k21rs001-sotsuron
 
+# 種別だけ明示指定（名前に規則がなく推論できない場合。学生IDは推論のまま）
+./registry-manager add k21rs001-jsai2026 --type other
+
 # 明示的形式
 ./registry-manager add k21rs001-sotsuron k21rs001 sotsuron
 

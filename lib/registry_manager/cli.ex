@@ -187,7 +187,11 @@ defmodule RegistryManager.CLI do
   end
 
   defp parse_add_command([repo_name, student_id, repo_type], opts) do
-    {:add_explicit, {repo_name, student_id, repo_type}, opts}
+    if opts[:type] do
+      {:error, "--type は 1 引数形式でのみ使えます（3 引数形式では第 3 引数でタイプを指定してください）"}
+    else
+      {:add_explicit, {repo_name, student_id, repo_type}, opts}
+    end
   end
 
   defp parse_add_command([_repo_name, _student_id, _repo_type, _status | _stage], _opts) do
