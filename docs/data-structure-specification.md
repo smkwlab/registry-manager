@@ -103,8 +103,7 @@ Repository Name Pattern → Repository Type
 その他（latex-template 派生名） → latex
 ```
 
-**注**: 推論・自動化は `ise` を出力し、実データにも `ise` で格納される。
-migration の正規化のみ `ise` → `ise-report` に揃える（validation は両値を受理）。
+**注**: 推論・自動化は `ise` を出力し、実データにも `ise` で格納される（validation は `ise-report` も受理する）。
 
 ### 2.4 学生ID形式仕様
 
