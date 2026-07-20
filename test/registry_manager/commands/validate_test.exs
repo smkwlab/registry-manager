@@ -303,6 +303,69 @@ defmodule RegistryManager.Commands.ValidateTest do
     end
   end
 
+  describe "run/3 - archived entries" do
+    test "skips validation for archived entries and reports the count" do
+      repos = %{
+        # 命名規約違反だが archived → 検証対象外
+        "legacyname-wr" => %{
+          "student_id" => "k20rs085",
+          "repository_type" => "wr",
+          "created_at" => "2020-07-08T06:51:39.835808Z",
+          "review_flow" => false,
+          "archived_at" => "2026-07-20T04:40:00Z"
+        },
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "created_at" => "2025-07-08T06:51:39.835808Z",
+          "review_flow" => true
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Total entries: 2")
+      assert String.contains?(output, "Valid entries: 1")
+      assert String.contains?(output, "Invalid entries: 0")
+      assert String.contains?(output, "Archived entries: 1")
+      refute String.contains?(output, "リポジトリ名と学生IDが一致しません")
+    end
+
+    test "includes archived_entries in JSON output" do
+      repos = %{
+        "legacyname-wr" => %{
+          "student_id" => "k20rs085",
+          "repository_type" => "wr",
+          "created_at" => "2020-07-08T06:51:39.835808Z",
+          "review_flow" => false,
+          "archived_at" => "2026-07-20T04:40:00Z"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [format: "json"], repositories: repos)
+      {:ok, parsed} = Jason.decode(output)
+
+      assert parsed["archived_entries"] == 1
+      assert parsed["invalid_entries"] == 0
+    end
+
+    test "reports an archived entry as skipped in single-repository mode" do
+      repos = %{
+        "legacyname-wr" => %{
+          "student_id" => "k20rs085",
+          "repository_type" => "wr",
+          "created_at" => "2020-07-08T06:51:39.835808Z",
+          "review_flow" => false,
+          "archived_at" => "2026-07-20T04:40:00Z"
+        }
+      }
+
+      {:ok, output} = Validate.run(["legacyname-wr"], [], repositories: repos)
+
+      assert String.contains?(output, "📦 Entry is archived (validation skipped)")
+    end
+  end
+
   describe "run/3 - review_flow validation" do
     test "rejects entries without review_flow" do
       repos = %{
