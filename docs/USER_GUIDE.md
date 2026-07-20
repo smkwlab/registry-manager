@@ -34,8 +34,9 @@ Registry Manager は、学生リポジトリレジストリ(`data/registry.json`
 
 各エントリは `review_flow`（boolean）を持ち、draft PR サイクルで運用するリポジトリか
 どうかを表します。タイプとは独立した属性で、登録時はタイプ由来の既定値
-（sotsuron / master / ise / poster → true、wr / other → false、latex → false）が
-入り、`--review-flow` / `--no-review-flow` で上書きできます。
+（sotsuron / master / ise（`ise-report` 表記も同様）/ poster → true、
+wr / other → false、latex → false）が入り、
+`--review-flow` / `--no-review-flow` で上書きできます。
 
 ## インストールと設定
 
