@@ -10,7 +10,6 @@ defmodule RegistryManager.CLI do
   alias RegistryManager.Commands.InferStudentId
   alias RegistryManager.Commands.Init
   alias RegistryManager.Commands.List
-  alias RegistryManager.Commands.Migrate
   alias RegistryManager.Commands.PropagateWorkflow
   alias RegistryManager.Commands.PrStatus
   alias RegistryManager.Commands.Validate
@@ -166,7 +165,6 @@ defmodule RegistryManager.CLI do
       "protect" => &parse_protect_command/2,
       "list" => &parse_list_command/2,
       "validate" => &parse_validate_command/2,
-      "migrate" => &parse_migrate_command/2,
       "cache" => &parse_cache_command/2,
       "cache-alias" => &parse_cache_alias/2,
       "infer-student-id" => &parse_infer_student_id_command/2,
@@ -239,10 +237,6 @@ defmodule RegistryManager.CLI do
   defp parse_validate_command([], opts), do: {:validate, [], opts}
   defp parse_validate_command([repo_name], opts), do: {:validate, [repo_name], opts}
   defp parse_validate_command(_, _opts), do: :help
-
-  defp parse_migrate_command([], opts), do: {:migrate, [], opts}
-  defp parse_migrate_command([subcommand], opts), do: {:migrate, [subcommand], opts}
-  defp parse_migrate_command(_, _opts), do: :help
 
   defp parse_cache_command([], opts), do: {:cache, [], opts}
   defp parse_cache_command([subcommand], opts), do: {:cache, [subcommand], opts}
@@ -436,20 +430,6 @@ defmodule RegistryManager.CLI do
 
       {:error, reason} ->
         print_output("❌ 検証エラー: #{reason}")
-        exit_with_code(1)
-    end
-  end
-
-  defp process_impl({:migrate, args, opts}) do
-    if opts[:verbose], do: print_output("データ移行処理を開始...")
-
-    case Migrate.run(args, opts) do
-      {:ok, output} ->
-        print_output(output)
-        exit_with_code(0)
-
-      {:error, reason} ->
-        print_output("❌ 移行エラー: #{reason}")
         exit_with_code(1)
     end
   end

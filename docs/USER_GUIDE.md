@@ -21,7 +21,6 @@ Registry Manager は、学生リポジトリレジストリ(`data/registry.json`
 - **データ表示**: 様々な形式での情報表示（テーブル、CSV、JSON）
 - **フィルタリング**: リポジトリタイプや保護状態による絞り込み
 - **GitHub統合**: GitHub APIとの安全な統合によるデータ管理
-- **データ移行**: レジストリデータ形式の旧形式（v1）から現行形式（v4）への移行（`migrate`）
 
 ### 対応リポジトリタイプ
 
@@ -313,31 +312,6 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ./registry-manager cache clear k21rs001-sotsuron
 ```
 
-### migrate コマンド
-
-データ移行を管理します。
-
-```bash
-./registry-manager migrate SUBCOMMAND [OPTIONS]
-```
-
-**サブコマンド:**
-- `status` - 移行状態の確認
-- `dry-run` - 移行のシミュレーション
-- `execute` - 実際の移行実行
-
-**使用例:**
-```bash
-# 移行状態の確認
-./registry-manager migrate status
-
-# 移行のドライラン
-./registry-manager migrate dry-run
-
-# 実際の移行実行
-./registry-manager migrate execute
-```
-
 ### validate コマンド
 
 データの整合性を検証します。
@@ -361,7 +335,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ./registry-manager validate --verbose
 ```
 
-レガシー形式のエントリが検出された場合、移行は `migrate` コマンドで行います。
+廃止フィールド（status / stage / updated_at）が検出された場合は legacy 警告として報告されます。
 
 ### pr-status コマンド
 
@@ -559,15 +533,8 @@ echo $GITHUB_TOKEN
 
 **解決策:**
 ```bash
-# データ検証実行
-./registry-manager validate
-
-# 移行が必要かチェック
-./registry-manager migrate status
-
-# 移行実行（必要に応じて）
-./registry-manager migrate dry-run
-./registry-manager migrate execute
+# データ検証実行（問題のあるエントリと理由が一覧される）
+./registry-manager validate --verbose
 ```
 
 #### 3. 学生名が表示されない

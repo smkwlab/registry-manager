@@ -2,7 +2,7 @@ defmodule RegistryManager.PerformanceTest do
   use ExUnit.Case, async: false
 
   alias RegistryManager.Commands.{Cache, List}
-  alias RegistryManager.{GitHubAPI, Migration}
+  alias RegistryManager.GitHubAPI
 
   @moduledoc """
   Performance tests for registry-manager v4
@@ -49,22 +49,6 @@ defmodule RegistryManager.PerformanceTest do
       assert status_time < 500_000
     end
 
-    test "migration analysis performance" do
-      # Test migration analysis speed
-      case GitHubAPI.get_repositories_json() do
-        {:ok, {registry_data, _sha}} ->
-          {time, result} = :timer.tc(fn -> Migration.dry_run_migration(registry_data) end)
-          assert {:ok, _report} = result
-          # Migration analysis should be fast even for large datasets
-          # Should complete within 1 second
-          assert time < 1_000_000
-
-        {:error, _} ->
-          # Skip if API unavailable
-          :ok
-      end
-    end
-
     test "memory usage stays reasonable" do
       # Test memory usage during operations
       initial_memory = :erlang.memory(:total)
@@ -109,27 +93,6 @@ defmodule RegistryManager.PerformanceTest do
 
       # Should complete within 15 seconds even under load
       assert time < 15_000_000
-    end
-
-    test "performance with large data simulation" do
-      # Simulate performance with large datasets
-      large_registry_data =
-        Enum.reduce(1..100, %{}, fn i, acc ->
-          Map.put(acc, "k21rs#{String.pad_leading("#{i}", 3, "0")}-wr", %{
-            "student_id" => "k21rs#{String.pad_leading("#{i}", 3, "0")}",
-            "repository_type" => "wr",
-            "created_at" => "2025-07-08T06:51:39.835808Z",
-            "registry_updated_at" => "2025-07-08T06:51:39.835808Z"
-          })
-        end)
-
-      {time, result} = :timer.tc(fn -> Migration.migrate_to_v4(large_registry_data) end)
-      assert {:ok, {_migrated_data, stats}} = result
-      assert stats.total_entries == 100
-
-      # Should handle 100 entries quickly
-      # Within 1 second
-      assert time < 1_000_000
     end
   end
 

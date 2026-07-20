@@ -10,7 +10,7 @@ defmodule RegistryManager.Commands.Validate do
   - Protection status validation
   - Legacy format detection
 
-  Legacy-format migration is handled by the separate `migrate` command.
+  Deprecated fields (status / stage / updated_at) are reported as legacy warnings.
   """
 
   alias RegistryManager.{GitHubAPI, TimestampManager, Validation}

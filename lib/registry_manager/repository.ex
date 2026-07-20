@@ -609,7 +609,7 @@ defmodule RegistryManager.Repository do
     if filter do
       current_data
       |> Enum.filter(fn {_repo_name, repo_info} ->
-        repo_info["status"] == filter or repo_info["repository_type"] == filter
+        repo_info["repository_type"] == filter
       end)
       |> Enum.into(%{})
     else
