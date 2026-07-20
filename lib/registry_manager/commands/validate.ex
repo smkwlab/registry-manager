@@ -12,8 +12,7 @@ defmodule RegistryManager.Commands.Validate do
   - Legacy format detection
 
   Deprecated fields (status / stage / updated_at) are reported as legacy warnings.
-  Entries with `archived_at` are historical data and are skipped (counted only) —
-  naming and schema rules apply to active repositories.
+  Entries with `archived_at` are skipped and counted separately.
   """
 
   alias RegistryManager.{GitHubAPI, TimestampManager, Validation}
@@ -107,8 +106,7 @@ defmodule RegistryManager.Commands.Validate do
     {:ok, results}
   end
 
-  # archived_at を持つエントリは歴史データとして検証をスキップする
-  # （初期運用期の命名規約違反等が archive 後に残り続けるのを防ぐ）
+  # archive 済み（archived_at あり）のエントリは検証せずスキップする
   defp validate_entry(_repo_name, %{"archived_at" => archived_at})
        when is_binary(archived_at) and archived_at != "" do
     :archived

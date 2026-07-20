@@ -337,6 +337,7 @@ defmodule RegistryManager.Commands.ValidateTest do
           "student_id" => "k20rs085",
           "repository_type" => "wr",
           "created_at" => "2020-07-08T06:51:39.835808Z",
+          "review_flow" => false,
           "archived_at" => "2026-07-20T04:40:00Z"
         }
       }
@@ -354,13 +355,14 @@ defmodule RegistryManager.Commands.ValidateTest do
           "student_id" => "k20rs085",
           "repository_type" => "wr",
           "created_at" => "2020-07-08T06:51:39.835808Z",
+          "review_flow" => false,
           "archived_at" => "2026-07-20T04:40:00Z"
         }
       }
 
       {:ok, output} = Validate.run(["legacyname-wr"], [], repositories: repos)
 
-      assert String.contains?(output, "archived")
+      assert String.contains?(output, "📦 Entry is archived (validation skipped)")
     end
   end
 

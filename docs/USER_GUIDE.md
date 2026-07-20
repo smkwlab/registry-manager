@@ -349,8 +349,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 `review_flow` は必須フィールドで、欠落や boolean 以外の値はエラーとして報告されます。
 廃止フィールド（status / stage / updated_at）が検出された場合は legacy 警告として報告されます。
-`archived_at` を持つエントリは歴史データとして検証をスキップし、件数のみ報告されます
-（命名規約等の検証は active なリポジトリに対して適用されます）。
+`archived_at` を持つエントリは validate の検証をスキップし、件数のみ報告されます。
 
 ### pr-status コマンド
 
