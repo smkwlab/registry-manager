@@ -12,6 +12,8 @@ defmodule RegistryManager.Commands.Validate do
   - Legacy format detection
 
   Deprecated fields (status / stage / updated_at) are reported as legacy warnings.
+  Entries with `archived_at` are historical data and are skipped (counted only) —
+  naming and schema rules apply to active repositories.
   """
 
   alias RegistryManager.{GitHubAPI, TimestampManager, Validation}
@@ -103,6 +105,13 @@ defmodule RegistryManager.Commands.Validate do
       |> Enum.into(%{})
 
     {:ok, results}
+  end
+
+  # archived_at を持つエントリは歴史データとして検証をスキップする
+  # （初期運用期の命名規約違反等が archive 後に残り続けるのを防ぐ）
+  defp validate_entry(_repo_name, %{"archived_at" => archived_at})
+       when is_binary(archived_at) and archived_at != "" do
+    :archived
   end
 
   defp validate_entry(repo_name, data) do
@@ -262,6 +271,9 @@ defmodule RegistryManager.Commands.Validate do
       :valid ->
         IO.puts("  ✅ Valid")
 
+      :archived ->
+        IO.puts("  📦 Archived (validation skipped)")
+
       {:legacy, warnings} ->
         IO.puts("  ⚠️  Legacy format:")
         Enum.each(warnings, fn w -> IO.puts("     - #{w}") end)
@@ -302,6 +314,7 @@ defmodule RegistryManager.Commands.Validate do
     Valid entries: #{stats.valid}
     Invalid entries: #{stats.invalid}
     Legacy entries: #{stats.legacy}
+    Archived entries: #{stats.archived}
     """
   end
 
@@ -323,13 +336,16 @@ defmodule RegistryManager.Commands.Validate do
   end
 
   defp calculate_stats(results) do
-    Enum.reduce(results, %{total: 0, valid: 0, invalid: 0, legacy: 0}, fn {_name, result}, acc ->
+    initial = %{total: 0, valid: 0, invalid: 0, legacy: 0, archived: 0}
+
+    Enum.reduce(results, initial, fn {_name, result}, acc ->
       acc = Map.update!(acc, :total, &(&1 + 1))
 
       case result do
         :valid -> Map.update!(acc, :valid, &(&1 + 1))
         {:invalid, _} -> Map.update!(acc, :invalid, &(&1 + 1))
         {:legacy, _} -> Map.update!(acc, :legacy, &(&1 + 1))
+        :archived -> Map.update!(acc, :archived, &(&1 + 1))
       end
     end)
   end
@@ -392,6 +408,8 @@ defmodule RegistryManager.Commands.Validate do
 
   defp format_validation_status(:valid), do: "✅ Entry is valid"
 
+  defp format_validation_status(:archived), do: "📦 Entry is archived (validation skipped)"
+
   defp format_validation_status({:invalid, errors}) do
     error_lines = Enum.map_join(errors, "\n", fn e -> "  - #{e}" end)
     "❌ Entry is invalid:\n#{error_lines}"
@@ -424,6 +442,7 @@ defmodule RegistryManager.Commands.Validate do
       "valid_entries" => stats.valid,
       "invalid_entries" => stats.invalid,
       "legacy_entries" => stats.legacy,
+      "archived_entries" => stats.archived,
       "errors" => errors,
       "legacy_details" => legacy
     }
@@ -443,6 +462,7 @@ defmodule RegistryManager.Commands.Validate do
         {status, issues} =
           case result do
             :valid -> {"valid", ""}
+            :archived -> {"archived", ""}
             {:invalid, errors} -> {"invalid", Enum.join(errors, "; ")}
             {:legacy, warnings} -> {"legacy", Enum.join(warnings, "; ")}
           end

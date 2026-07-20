@@ -66,6 +66,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | フィールド名 | 型 | 説明 | 制約 | デフォルト値 |
 |-------------|---|------|------|------------|
 | `protection_status` | string | ブランチ保護状態 | 値: `protected`, `unprotected`, `unknown` | `unknown` |
+| `archived_at` | string | archive 実行日時（`archive` コマンドが記録） | ISO8601 形式。存在するエントリは歴史データとして validate の検証対象外（件数のみ報告） | なし（active） |
 
 #### 2.2.3 廃止フィールド
 
