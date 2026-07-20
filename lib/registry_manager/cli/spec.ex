@@ -7,7 +7,7 @@ defmodule RegistryManager.CLI.Spec do
   ここに定義がないオプションはパース段階でエラーになる。
   """
 
-  @repo_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
+  @repo_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "poster", "other"]
   @output_formats ["table", "csv", "json"]
   @pr_states ["open", "closed", "all"]
   @pr_sort_keys ["repository", "updated", "created"]
@@ -105,6 +105,12 @@ defmodule RegistryManager.CLI.Spec do
       alias: :i,
       values: nil,
       doc: "候補を 1 件ずつ確認しながら archive（y/n/a/q）"
+    },
+    review_flow: %{
+      type: :boolean,
+      alias: nil,
+      values: nil,
+      doc: "review_flow を明示指定（--no-review-flow で false。省略時はタイプ由来の既定値）"
     }
   }
 
@@ -133,12 +139,14 @@ defmodule RegistryManager.CLI.Spec do
       summary: "リポジトリ情報を新規登録（1引数: 推論形式・推奨 / 3引数: 明示的形式）",
       options: [
         :dry_run,
-        {:type, %{doc: "リポジトリタイプの推論を上書き（1引数形式のみ。名前に規則がない場合に使用）"}}
+        {:type, %{doc: "リポジトリタイプの推論を上書き（1引数形式のみ。名前に規則がない場合に使用）"}},
+        :review_flow
       ],
       examples: [
         "add k21rs001-sotsuron",
         "add myorg/k21rs001-wr",
         "add k21rs001-jsai2026 --type other",
+        "add k21rs001-fit26 --type latex --review-flow",
         "add k21rs001-sotsuron k21rs001 sotsuron"
       ]
     },
@@ -148,7 +156,7 @@ defmodule RegistryManager.CLI.Spec do
       usage: ["update <repo_name> <field> <value>"],
       summary: "既存リポジトリ情報を更新",
       options: [:dry_run],
-      examples: ["update k21rs001-sotsuron status completed"]
+      examples: ["update k21rs001-fit26 review_flow true"]
     },
     %{
       name: "remove",

@@ -187,13 +187,11 @@ defmodule RegistryManager.Validation do
       :ok
 
       iex> RegistryManager.Validation.validate_repository_type("invalid")
-      {:error, "不正なリポジトリタイプ: invalid (valid: sotsuron, master, wr, ise, ise-report, latex, other)"}
+      {:error, "不正なリポジトリタイプ: invalid (valid: sotsuron, master, wr, ise, ise-report, latex, poster, other)"}
   """
   def validate_repository_type(repo_type) do
-    # Issue #388 で master/other を追加。Issue #11（TMT#471 の語彙確定）で latex を
-    # 正式語彙に追加: latex-template 派生（研究会等）は branch 追跡対象の独立タイプ。
     # thesis は repo 名 suffix・文書種別・フィルタ名のレイヤの語であり type ではない
-    valid_types = ["sotsuron", "master", "wr", "ise", "ise-report", "latex", "other"]
+    valid_types = ["sotsuron", "master", "wr", "ise", "ise-report", "latex", "poster", "other"]
 
     cond do
       repo_type in valid_types ->
@@ -208,6 +206,18 @@ defmodule RegistryManager.Validation do
         {:error, "不正なリポジトリタイプ: #{repo_type} (valid: #{Enum.join(valid_types, ", ")})"}
     end
   end
+
+  # draft PR サイクルが常時有効なタイプ。latex は作成時オプトインのため含めない
+  @review_flow_types ["sotsuron", "master", "ise", "ise-report", "poster"]
+
+  @doc """
+  リポジトリタイプ由来の review_flow 既定値を返す
+
+  draft PR サイクルが常時有効なタイプ（sotsuron / master / ise / poster）は true、
+  wr / other は false。latex は作成時オプトインのため既定は false で、
+  明示指定（--review-flow）で上書きする。
+  """
+  def default_review_flow(repo_type), do: repo_type in @review_flow_types
 
   @doc """
   全レジストリデータの整合性を検証する

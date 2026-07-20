@@ -11,13 +11,27 @@ defmodule RegistryManager.Repository do
 
   @doc """
   新しいリポジトリエントリを構築（ビジネスロジック）
+
+  review_flow が nil の場合はタイプ由来の既定値
+  （`Validation.default_review_flow/1`）を採用する。
   """
-  def build_new_entry(student_id, repo_type, timestamp, github_username \\ nil) do
+  def build_new_entry(
+        student_id,
+        repo_type,
+        timestamp,
+        github_username \\ nil,
+        review_flow \\ nil
+      ) do
     base_entry = %{
       "student_id" => student_id,
       "repository_type" => repo_type,
       "created_at" => timestamp,
-      "registry_updated_at" => timestamp
+      "registry_updated_at" => timestamp,
+      "review_flow" =>
+        if(is_nil(review_flow),
+          do: Validation.default_review_flow(repo_type),
+          else: review_flow
+        )
     }
 
     case github_username do
@@ -331,7 +345,8 @@ defmodule RegistryManager.Repository do
           opts[:github_username] ||
             get_github_username_for_add(repo_name, student_id, opts)
 
-        entry = build_new_entry(student_id, repo_type, timestamp, github_username)
+        entry =
+          build_new_entry(student_id, repo_type, timestamp, github_username, opts[:review_flow])
 
         commit_message =
           build_commit_message(
@@ -362,12 +377,23 @@ defmodule RegistryManager.Repository do
   リポジトリ情報を更新
   """
   def update(repo_name, field, value, opts \\ []) do
-    if opts[:dry_run] do
-      {:ok, "[DRY-RUN] リポジトリ情報を更新: #{repo_name} (#{field} = #{value})"}
-    else
-      perform_update(repo_name, field, value)
+    with {:ok, normalized_value} <- normalize_update_value(field, value) do
+      if opts[:dry_run] do
+        {:ok, "[DRY-RUN] リポジトリ情報を更新: #{repo_name} (#{field} = #{value})"}
+      else
+        perform_update(repo_name, field, normalized_value)
+      end
     end
   end
+
+  # review_flow は boolean フィールドのため、CLI から渡される文字列を変換する
+  defp normalize_update_value("review_flow", "true"), do: {:ok, true}
+  defp normalize_update_value("review_flow", "false"), do: {:ok, false}
+
+  defp normalize_update_value("review_flow", value),
+    do: {:error, "review_flow の値が不正です: #{value}（true または false を指定してください）"}
+
+  defp normalize_update_value(_field, value), do: {:ok, value}
 
   defp perform_update(repo_name, field, value) do
     case DataStore.get_all_entries() do

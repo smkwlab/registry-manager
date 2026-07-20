@@ -29,7 +29,13 @@ Registry Manager は、学生リポジトリレジストリ(`data/registry.json`
 - **wr**: 週報
 - **ise**: 情報科学演習レポート
 - **latex**: 汎用 LaTeX 文書
-- **other**: その他（ポスター等）
+- **poster**: 学会ポスター
+- **other**: その他
+
+各エントリは `review_flow`（boolean）を持ち、draft PR サイクルで運用するリポジトリか
+どうかを表します。タイプとは独立した属性で、登録時はタイプ由来の既定値
+（sotsuron / master / ise / poster → true、wr / other → false、latex → false）が
+入り、`--review-flow` / `--no-review-flow` で上書きできます。
 
 ## インストールと設定
 
@@ -169,7 +175,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ```
 
 **引数:**
-- `TYPE` - フィルター対象のリポジトリタイプ（wr, ise, sotsuron, master, thesis, latex, other）
+- `TYPE` - フィルター対象のリポジトリタイプ（wr, ise, sotsuron, master, thesis, latex, poster, other）
 
 **オプション:**
 
@@ -220,6 +226,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 **オプション:**
 - `--type TYPE` - リポジトリタイプの推論を上書き（1引数形式のみ。名前に規則がない場合に使用）
+- `--review-flow` / `--no-review-flow` - review_flow を明示指定（省略時はタイプ由来の既定値）
 - `--dry-run` - 実際には追加せず、処理内容のみ表示
 
 **使用例:**
@@ -232,6 +239,9 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 # タイプだけ上書き
 ./registry-manager add k21rs001-jsai2026 --type other
+
+# レビューフロー有効の latex リポジトリ（作成時オプトイン）
+./registry-manager add k21rs001-fit26 --type latex --review-flow
 
 # ドライランで確認
 ./registry-manager add k21rs001-sotsuron --dry-run
@@ -248,12 +258,13 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 **更新可能フィールド:**
 - `github_username` - GitHubユーザー名
 - `repository_type` - リポジトリタイプ
+- `review_flow` - draft PR サイクル対象か（true / false）
 - その他のカスタムフィールド
 
 **使用例:**
 ```bash
 ./registry-manager update k21rs001-sotsuron github_username student001
-./registry-manager update k21rs001-sotsuron repository_type thesis
+./registry-manager update k21rs001-fit26 review_flow true
 ```
 
 ### protect コマンド
@@ -335,6 +346,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ./registry-manager validate --verbose
 ```
 
+`review_flow` は必須フィールドで、欠落や boolean 以外の値はエラーとして報告されます。
 廃止フィールド（status / stage / updated_at）が検出された場合は legacy 警告として報告されます。
 
 ### pr-status コマンド
