@@ -5,7 +5,20 @@ defmodule RegistryManager.CLI.SpecTest do
 
   describe "catalog integrity" do
     test "repo_types is the single source of repository types" do
-      assert Spec.repo_types() == ["wr", "ise", "sotsuron", "master", "thesis", "latex", "other"]
+      assert Spec.repo_types() == [
+               "wr",
+               "ise",
+               "sotsuron",
+               "master",
+               "thesis",
+               "latex",
+               "poster",
+               "other"
+             ]
+    end
+
+    test "add accepts --review-flow" do
+      assert :review_flow in Spec.allowed_for("add")
     end
 
     test "pr states and sort keys are exposed as canonical lists" do

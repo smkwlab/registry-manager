@@ -6,7 +6,8 @@ defmodule RegistryManager.Commands.Validate do
   - Student ID format validation
   - Repository name consistency
   - Repository type validation
-  - Timestamp field validation (new 3-field format)
+  - Timestamp field validation
+  - review_flow validation (required boolean)
   - Protection status validation
   - Legacy format detection
 
@@ -111,6 +112,7 @@ defmodule RegistryManager.Commands.Validate do
       validate_repository_name(repo_name, data),
       validate_repository_type(data),
       validate_timestamps(data),
+      validate_review_flow(data),
       validate_protection_status(data),
       check_legacy_format(data)
     ]
@@ -210,6 +212,16 @@ defmodule RegistryManager.Commands.Validate do
     case TimestampManager.parse_github_time(value) do
       {:ok, _} -> true
       {:error, _} -> false
+    end
+  end
+
+  # review_flow は必須の boolean（draft PR サイクル対象か）。
+  # タイプからのフォールバック推論は行わない
+  defp validate_review_flow(data) do
+    case Map.get(data, "review_flow") do
+      nil -> {:error, "Missing review_flow field"}
+      value when is_boolean(value) -> :ok
+      value -> {:error, "Invalid review_flow: #{inspect(value)} (expected: true or false)"}
     end
   end
 

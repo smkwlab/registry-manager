@@ -22,6 +22,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
     "repository_type": "wr",
     "created_at": "2025-07-08T06:51:39.835808Z",
     "registry_updated_at": "2025-07-08T15:30:00.000000Z",
+    "review_flow": false,
     "github_username": ["mockuser3"],
     "protection_status": "protected"
   }
@@ -40,6 +41,7 @@ registry-manager で管理される学生リポジトリデータの構造仕様
     "repository_type": "string",
     "created_at": "string (ISO8601)",
     "registry_updated_at": "string (ISO8601)",
+    "review_flow": "boolean",
     "github_username": ["string"],
     "protection_status": "string"
   }
@@ -53,9 +55,10 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | フィールド名 | 型 | 説明 | 制約 | 取得方法 |
 |-------------|---|------|------|---------|
 | `student_id` | string | 学生ID | 形式: `k##[a-z]{2}###` | 推論または手動指定 |
-| `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `ise-report`, `sotsuron`, `master`, `latex`, `other` | 推論または手動指定 |
+| `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `ise-report`, `sotsuron`, `master`, `latex`, `poster`, `other` | 推論または手動指定 |
 | `created_at` | string | リポジトリ作成日時 | ISO8601形式（小数秒可）。少なくとも `created_at` か `registry_updated_at` の一方が必要 | GitHub API |
 | `registry_updated_at` | string | レジストリ最終更新日時 | ISO8601形式（小数秒可）。少なくとも `created_at` か `registry_updated_at` の一方が必要 | registry-manager / 登録自動化 |
+| `review_flow` | boolean | draft PR サイクルで運用するリポジトリか | タイプとは独立した属性。登録時の既定値: sotsuron / master / ise（`ise-report` 表記も同様）/ poster → true、wr / other → false、latex → false（作成時オプトイン）。読み手はタイプからのフォールバック推論をしない | 登録時に決定（`--review-flow` で上書き可） |
 | `github_username` | string[] | GitHubユーザー名（複数オーナー対応） | GitHub ID の配列。レガシーの string 形式も読み込み時に配列へ正規化される（`Compatibility.normalize_github_username/1`） | GitHub API または推論 |
 
 #### 2.2.2 任意フィールド
@@ -84,8 +87,9 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | `ise` / `ise-report` | ISE レポート | `*-ise-report*` |
 | `sotsuron` | 卒業論文 | `*-sotsuron` |
 | `master` | 修士論文 | `*-master` |
-| `latex` | latex-template 派生（研究会・学会原稿等。branch 追跡対象） | `*-fit*`, `*-hinokuni*` など任意 |
-| `other` | 上記以外（poster 等） | 任意 |
+| `latex` | latex-template 派生（研究会・学会原稿等） | `*-fit*`, `*-hinokuni*` など任意 |
+| `poster` | 学会ポスター（poster-template 派生） | 任意 |
+| `other` | 上記以外 | 任意 |
 
 **補足**: `thesis` は repository_type の語彙では**ない**（repo 名 suffix・
 文書種別 DOC_TYPE・「論文まとめ」フィルタ名としてのみ使用する。
@@ -100,10 +104,11 @@ Repository Name Pattern → Repository Type
 *-ise-report*          → ise
 *-sotsuron             → sotsuron
 *-master / *-thesis    → master
-その他（latex-template 派生名） → latex
+その他                 → other
 ```
 
 **注**: 推論・自動化は `ise` を出力し、実データにも `ise` で格納される（validation は `ise-report` も受理する）。
+`latex` / `poster` は名前から推論されないため、`--type` での明示指定が必要（指定がなければ `other` になる）。
 
 ### 2.4 学生ID形式仕様
 
@@ -245,7 +250,7 @@ value1,value2,80JK059,田中太郎,value5,...
 student_id_pattern = ~r/^k\d{2}[a-z]{2}\d{3}$/
 
 # リポジトリタイプチェック
-valid_types = ["wr", "ise", "sotsuron", "thesis"]
+valid_types = ["wr", "ise", "ise-report", "sotsuron", "master", "latex", "poster", "other"]
 
 # 時刻形式チェック（ISO8601）
 # 小数部は \d+ で桁数可変を許容（標準は 6 桁だが、過去データに桁数の

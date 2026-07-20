@@ -22,7 +22,8 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
                "student_id" => "k21rs001",
                "repository_type" => "wr",
                "created_at" => "2025-07-02 10:00:00 UTC",
-               "registry_updated_at" => "2025-07-02 10:00:00 UTC"
+               "registry_updated_at" => "2025-07-02 10:00:00 UTC",
+               "review_flow" => false
              }
     end
 
@@ -59,7 +60,8 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
                "repository_type" => "wr",
                "created_at" => "2025-07-02 10:00:00 UTC",
                "registry_updated_at" => "2025-07-02 10:00:00 UTC",
-               "github_username" => "test-taro"
+               "github_username" => "test-taro",
+               "review_flow" => false
              }
     end
 
@@ -73,6 +75,48 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
       result = Repository.build_new_entry("k21rs001", "wr", "2025-07-02 10:00:00 UTC", "")
 
       refute Map.has_key?(result, "github_username")
+    end
+
+    test "derives review_flow from repository type when not specified" do
+      timestamp = "2025-07-02 10:00:00 UTC"
+
+      for {type, expected} <- [
+            {"sotsuron", true},
+            {"master", true},
+            {"ise", true},
+            {"poster", true},
+            {"wr", false},
+            {"latex", false},
+            {"other", false}
+          ] do
+        result = Repository.build_new_entry("k21rs001", type, timestamp)
+        assert result["review_flow"] == expected
+      end
+    end
+
+    test "explicit review_flow overrides the type default" do
+      timestamp = "2025-07-02 10:00:00 UTC"
+
+      latex_on = Repository.build_new_entry("k21rs001", "latex", timestamp, nil, true)
+      assert latex_on["review_flow"] == true
+
+      poster_off = Repository.build_new_entry("k21rs001", "poster", timestamp, nil, false)
+      assert poster_off["review_flow"] == false
+    end
+  end
+
+  describe "update/4 - review_flow の値の正規化" do
+    test "accepts true/false strings for review_flow (dry-run)" do
+      assert {:ok, _} = Repository.update("k21rs001-latex", "review_flow", "true", dry_run: true)
+      assert {:ok, _} = Repository.update("k21rs001-latex", "review_flow", "false", dry_run: true)
+    end
+
+    test "rejects non-boolean values for review_flow even in dry-run" do
+      assert {:error, message} =
+               Repository.update("k21rs001-latex", "review_flow", "maybe", dry_run: true)
+
+      assert message =~ "true"
+      assert message =~ "false"
     end
   end
 

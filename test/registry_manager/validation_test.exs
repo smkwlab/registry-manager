@@ -191,7 +191,7 @@ defmodule RegistryManager.ValidationTest do
 
   describe "repository type validation" do
     test "validates known repository types" do
-      known_types = ["sotsuron", "wr", "ise-report"]
+      known_types = ["sotsuron", "wr", "ise-report", "poster", "other"]
 
       Enum.each(known_types, fn type ->
         assert :ok = Validation.validate_repository_type(type)
@@ -213,6 +213,23 @@ defmodule RegistryManager.ValidationTest do
       # Test that unknown types don't crash
       result = Validation.validate_repository_type("unknown-type")
       assert match?(:ok, result) or match?({:error, _}, result)
+    end
+  end
+
+  describe "default_review_flow/1" do
+    test "returns true for types with an always-on draft PR cycle" do
+      Enum.each(["sotsuron", "master", "ise", "ise-report", "poster"], fn type ->
+        assert Validation.default_review_flow(type) == true
+      end)
+    end
+
+    test "returns false for wr and other" do
+      assert Validation.default_review_flow("wr") == false
+      assert Validation.default_review_flow("other") == false
+    end
+
+    test "returns false for latex (creation-time opt-in)" do
+      assert Validation.default_review_flow("latex") == false
     end
   end
 

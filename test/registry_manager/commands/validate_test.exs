@@ -11,7 +11,8 @@ defmodule RegistryManager.Commands.ValidateTest do
       "created_at" => "2025-07-08T06:51:39.835808Z",
       "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
       "github_username" => "student001",
-      "protection_status" => "protected"
+      "protection_status" => "protected",
+      "review_flow" => true
     },
     "k21rs002-wr" => %{
       "student_id" => "k21rs002",
@@ -19,7 +20,8 @@ defmodule RegistryManager.Commands.ValidateTest do
       "created_at" => "2025-07-07T10:20:00.000000Z",
       "registry_updated_at" => "2025-07-09T10:00:00.000000Z",
       "github_username" => "student002",
-      "protection_status" => "not_protected"
+      "protection_status" => "not_protected",
+      "review_flow" => false
     }
   }
 
@@ -30,7 +32,8 @@ defmodule RegistryManager.Commands.ValidateTest do
       "repository_type" => "sotsuron",
       "created_at" => "2025-07-08T06:51:39.835808Z",
       "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
-      "github_username" => "student001"
+      "github_username" => "student001",
+      "review_flow" => true
     },
     # レガシー形式
     "k88rs509-ise-report1" => %{
@@ -40,7 +43,8 @@ defmodule RegistryManager.Commands.ValidateTest do
       "stage" => "ise",
       "created_at" => "2025-07-06T16:20:06.000000Z",
       "updated_at" => "2025-07-08T10:00:00.000000Z",
-      "github_username" => "k88rs509"
+      "github_username" => "k88rs509",
+      "review_flow" => true
     },
     # 不正な形式（必須フィールド不足）
     "k21rs003-invalid" => %{
@@ -198,7 +202,8 @@ defmodule RegistryManager.Commands.ValidateTest do
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
           "created_at" => "2025-07-08T06:51:39.835808Z",
-          "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
+          "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
+          "review_flow" => true
         }
       }
 
@@ -214,12 +219,14 @@ defmodule RegistryManager.Commands.ValidateTest do
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
-          "created_at" => "2025-07-08T06:51:39.835808Z"
+          "created_at" => "2025-07-08T06:51:39.835808Z",
+          "review_flow" => true
         },
         "k21rs002-wr" => %{
           "student_id" => "k21rs002",
           "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
+          "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
+          "review_flow" => false
         }
       }
 
@@ -248,7 +255,8 @@ defmodule RegistryManager.Commands.ValidateTest do
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
-          "updated_at" => "2025-07-08 10:00:00 UTC"
+          "updated_at" => "2025-07-08 10:00:00 UTC",
+          "review_flow" => true
         }
       }
 
@@ -265,7 +273,8 @@ defmodule RegistryManager.Commands.ValidateTest do
           "repository_type" => "sotsuron",
           "created_at" => "2025-07-08T06:51:39.835808Z",
           "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
-          "updated_at" => "2025-07-08 10:00:00 UTC"
+          "updated_at" => "2025-07-08 10:00:00 UTC",
+          "review_flow" => true
         }
       }
 
@@ -291,6 +300,55 @@ defmodule RegistryManager.Commands.ValidateTest do
 
       assert String.contains?(output, "Invalid entries: 1")
       assert String.contains?(output, "Invalid timestamp format")
+    end
+  end
+
+  describe "run/3 - review_flow validation" do
+    test "rejects entries without review_flow" do
+      repos = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "created_at" => "2025-07-08T06:51:39.835808Z"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Invalid entries: 1")
+      assert String.contains?(output, "Missing review_flow field")
+    end
+
+    test "rejects non-boolean review_flow values" do
+      repos = %{
+        "k21rs001-sotsuron" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "sotsuron",
+          "created_at" => "2025-07-08T06:51:39.835808Z",
+          "review_flow" => "true"
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Invalid entries: 1")
+      assert String.contains?(output, "Invalid review_flow")
+    end
+
+    test "accepts poster entries with review_flow" do
+      repos = %{
+        "k21rs001-jsai2026-poster" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "poster",
+          "created_at" => "2025-07-08T06:51:39.835808Z",
+          "review_flow" => true
+        }
+      }
+
+      {:ok, output} = Validate.run([], [], repositories: repos)
+
+      assert String.contains?(output, "Valid entries: 1")
+      assert String.contains?(output, "Invalid entries: 0")
     end
   end
 
@@ -333,7 +391,8 @@ defmodule RegistryManager.Commands.ValidateTest do
                 "student_id" => student_id,
                 "repository_type" => "sotsuron",
                 "created_at" => "2025-07-08T06:51:39.835808Z",
-                "registry_updated_at" => "2025-07-08T15:30:00.000000Z"
+                "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
+                "review_flow" => true
               }
             end
 
