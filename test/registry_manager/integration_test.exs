@@ -1,7 +1,7 @@
 defmodule RegistryManager.IntegrationTest do
   use ExUnit.Case, async: false
 
-  alias RegistryManager.Commands.{Cache, List, Migrate, Validate}
+  alias RegistryManager.Commands.{Cache, List, Validate}
   alias RegistryManager.GitHubAPI
   alias RegistryManager.Repository
   alias RegistryManager.Test.GitHubAPIMock
@@ -127,19 +127,6 @@ defmodule RegistryManager.IntegrationTest do
     end
   end
 
-  describe "complete workflow - migration" do
-    test "migration status and dry-run workflow" do
-      # 1. Check migration status
-      assert {:ok, _} = Migrate.run(["status"], [])
-
-      # 2. Perform dry-run
-      assert {:ok, _} = Migrate.run(["dry-run"], [])
-
-      # 3. Would execute migration if needed (skip in test)
-      # assert {:ok, _} = Migrate.run(["execute"], [])
-    end
-  end
-
   describe "configuration management" do
     test "configuration precedence: env > file > defaults" do
       # Test default values via Application
@@ -180,9 +167,6 @@ defmodule RegistryManager.IntegrationTest do
 
       # Invalid cache command
       assert {:error, _} = Cache.run(["invalid"], [])
-
-      # Invalid migrate command
-      assert {:error, _} = Migrate.run(["invalid", "args"], [])
     end
 
     test "handles missing CSV file gracefully" do
@@ -263,39 +247,6 @@ defmodule RegistryManager.IntegrationTest do
       # Should complete within 5 seconds even with all options
       # 5 seconds in microseconds
       assert time < 5_000_000
-    end
-  end
-
-  describe "data format compatibility" do
-    test "handles both v1 and v4 registry formats via migration" do
-      # Create test data with mixed formats
-      v1_entry = %{
-        "student_id" => "k19rs999",
-        "repository_type" => "sotsuron",
-        "status" => "completed",
-        "stage" => "thesis",
-        "updated_at" => "2025-07-07 16:44:44 UTC"
-      }
-
-      v4_entry = %{
-        "student_id" => "k21rs001",
-        "repository_type" => "wr",
-        "created_at" => "2025-07-08T06:51:39.835808Z",
-        "registry_updated_at" => "2025-07-08T06:51:39.835808Z"
-      }
-
-      # Use Migration module to test format detection
-      alias RegistryManager.Migration
-
-      # Should be detected as v1
-      refute Migration.is_v4_format?(v1_entry)
-      # Should be detected as v4
-      assert Migration.is_v4_format?(v4_entry)
-
-      # Test migration of v1 entry
-      {:ok, migrated} = Migration.migrate_single_entry("test-v1", v1_entry)
-      # Should be v4 after migration
-      assert Migration.is_v4_format?(migrated)
     end
   end
 

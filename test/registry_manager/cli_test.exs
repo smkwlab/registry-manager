@@ -527,17 +527,6 @@ defmodule RegistryManager.CLITest do
       assert_output_contains("✅")
     end
 
-    test "migrate status succeeds" do
-      result = run_cli_process({:migrate, ["status"], [verbose: true]})
-      assert_success_exit(result)
-    end
-
-    test "migrate with invalid subcommand errors" do
-      result = run_cli_process({:migrate, ["totally-invalid"], []})
-      assert_error_exit(result)
-      assert_output_contains("❌")
-    end
-
     test "cache status succeeds" do
       result = run_cli_process({:cache, ["status"], [verbose: true]})
       assert_success_exit(result)

@@ -205,14 +205,6 @@ defmodule RegistryManager.CLI.Spec do
       examples: ["validate", "validate k21rs001-sotsuron", "validate --format json"]
     },
     %{
-      name: "migrate",
-      aliases: [],
-      usage: ["migrate [status|dry-run|execute]"],
-      summary: "レジストリデータを v1 から v4 形式に移行",
-      options: [:dry_run],
-      examples: ["migrate status", "migrate dry-run", "migrate execute"]
-    },
-    %{
       name: "cache",
       aliases: ["cache-status", "cache-clear", "cache-refresh"],
       usage: ["cache [status|clear|refresh] [repo_name]"],

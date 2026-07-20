@@ -263,7 +263,6 @@ defmodule RegistryManager.Commands.List do
           repo_data
           |> add_student_info(csv_data)
           |> add_activity_info(repo_name, activity_data)
-          |> migrate_legacy_fields()
 
         {repo_name, enriched_data}
       end)
@@ -375,10 +374,6 @@ defmodule RegistryManager.Commands.List do
       nil -> repo_data
       activity -> Map.merge(repo_data, activity)
     end
-  end
-
-  defp migrate_legacy_fields(repo_data) do
-    TimestampManager.migrate_legacy_timestamps(repo_data)
   end
 
   defp format_output(repo_list, opts, _test_params) do
