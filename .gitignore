@@ -31,4 +31,4 @@ registry-manager
 !test/fixtures/*.csv
 
 # Claude Code のローカル設定（開発者固有の絶対パス等を含むためコミットしない）
-.claude/
+.claude/settings.local.json
