@@ -7,7 +7,17 @@ defmodule RegistryManager.CLI.Spec do
   ここに定義がないオプションはパース段階でエラーになる。
   """
 
-  @repo_types ["wr", "ise", "sotsuron", "master", "thesis", "latex", "poster", "other"]
+  @repo_types [
+    "wr",
+    "ise",
+    "sotsuron",
+    "master",
+    "thesis",
+    "latex",
+    "poster",
+    "sotsuron-report",
+    "other"
+  ]
   @output_formats ["table", "csv", "json"]
   @pr_states ["open", "closed", "all"]
   @pr_sort_keys ["repository", "updated", "created"]

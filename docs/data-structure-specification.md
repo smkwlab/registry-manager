@@ -55,10 +55,10 @@ registry-manager で管理される学生リポジトリデータの構造仕様
 | フィールド名 | 型 | 説明 | 制約 | 取得方法 |
 |-------------|---|------|------|---------|
 | `student_id` | string | 学生ID | 形式: `k##[a-z]{2}###` | 推論または手動指定 |
-| `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `ise-report`, `sotsuron`, `master`, `latex`, `poster`, `other` | 推論または手動指定 |
+| `repository_type` | string | リポジトリタイプ | 値: `wr`, `ise`, `ise-report`, `sotsuron`, `master`, `latex`, `poster`, `sotsuron-report`, `other` | 推論または手動指定 |
 | `created_at` | string | リポジトリ作成日時 | ISO8601形式（小数秒可）。少なくとも `created_at` か `registry_updated_at` の一方が必要 | GitHub API |
 | `registry_updated_at` | string | レジストリ最終更新日時 | ISO8601形式（小数秒可）。少なくとも `created_at` か `registry_updated_at` の一方が必要 | registry-manager / 登録自動化 |
-| `review_flow` | boolean | draft PR サイクルで運用するリポジトリか | タイプとは独立した属性。登録時の既定値: sotsuron / master / ise（`ise-report` 表記も同様）/ poster → true、wr / other → false、latex → false（作成時オプトイン）。読み手はタイプからのフォールバック推論をしない | 登録時に決定（`--review-flow` で上書き可） |
+| `review_flow` | boolean | draft PR サイクルで運用するリポジトリか | タイプとは独立した属性。登録時の既定値: sotsuron / master / ise（`ise-report` 表記も同様）/ poster → true、wr / sotsuron-report / other → false、latex → false（作成時オプトイン）。読み手はタイプからのフォールバック推論をしない | 登録時に決定（`--review-flow` で上書き可） |
 | `github_username` | string[] | GitHubユーザー名（複数オーナー対応） | GitHub ID の配列。レガシーの string 形式も読み込み時に配列へ正規化される（`Compatibility.normalize_github_username/1`） | GitHub API または推論 |
 
 #### 2.2.2 任意フィールド

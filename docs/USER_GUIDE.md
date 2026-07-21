@@ -30,11 +30,12 @@ Registry Manager は、学生リポジトリレジストリ(`data/registry.json`
 - **ise**: 情報科学演習レポート
 - **latex**: 汎用 LaTeX 文書
 - **poster**: 学会ポスター
+- **sotsuron-report**: 卒業論文調査報告
 - **other**: その他
 
 各エントリは `review_flow`（boolean）を持ち、draft PR サイクルで運用するリポジトリか
 どうかを表します。タイプとは独立した属性で、登録時はタイプ由来の既定値
-（sotsuron / master / ise（`ise-report` 表記も同様）/ poster → true、
+（sotsuron / master / ise（`ise-report` 表記も同様）/ poster → true、sotsuron-report / 
 wr / other → false、latex → false）が入り、
 `--review-flow` / `--no-review-flow` で上書きできます。
 
@@ -176,7 +177,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ```
 
 **引数:**
-- `TYPE` - フィルター対象のリポジトリタイプ（wr, ise, sotsuron, master, thesis, latex, poster, other）
+- `TYPE` - フィルター対象のリポジトリタイプ（wr, ise, sotsuron, master, thesis, latex, poster, sotsuron-report, other）
 
 **オプション:**
 

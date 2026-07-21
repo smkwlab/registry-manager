@@ -987,6 +987,9 @@ defmodule RegistryManager.Repository do
   リポジトリ名からリポジトリタイプを推論
 
   Issue #388: Updated to support new type classification
+  - sotsuron-report: Thesis survey report repositories (*-sotsuron-report).
+    Checked before sotsuron: the -sotsuron substring test would otherwise
+    swallow these names
   - sotsuron: Undergraduate thesis repositories (*-sotsuron)
   - master: Master thesis repositories (*-master)
   - wr: Weekly report repositories (*-wr)
@@ -995,6 +998,7 @@ defmodule RegistryManager.Repository do
   """
   def infer_repository_type(repo_name) do
     cond do
+      String.contains?(repo_name, "-sotsuron-report") -> {:ok, "sotsuron-report"}
       String.contains?(repo_name, "-sotsuron") -> {:ok, "sotsuron"}
       String.contains?(repo_name, "-master") -> {:ok, "master"}
       String.contains?(repo_name, "-wr") -> {:ok, "wr"}
