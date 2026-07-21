@@ -13,6 +13,7 @@ defmodule RegistryManager.CLI.SpecTest do
                "thesis",
                "latex",
                "poster",
+               "sotsuron-report",
                "other"
              ]
     end

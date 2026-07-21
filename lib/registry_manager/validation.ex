@@ -187,11 +187,21 @@ defmodule RegistryManager.Validation do
       :ok
 
       iex> RegistryManager.Validation.validate_repository_type("invalid")
-      {:error, "不正なリポジトリタイプ: invalid (valid: sotsuron, master, wr, ise, ise-report, latex, poster, other)"}
+      {:error, "不正なリポジトリタイプ: invalid (valid: sotsuron, master, wr, ise, ise-report, latex, poster, sotsuron-report, other)"}
   """
   def validate_repository_type(repo_type) do
     # thesis は repo 名 suffix・文書種別・フィルタ名のレイヤの語であり type ではない
-    valid_types = ["sotsuron", "master", "wr", "ise", "ise-report", "latex", "poster", "other"]
+    valid_types = [
+      "sotsuron",
+      "master",
+      "wr",
+      "ise",
+      "ise-report",
+      "latex",
+      "poster",
+      "sotsuron-report",
+      "other"
+    ]
 
     cond do
       repo_type in valid_types ->

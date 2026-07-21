@@ -215,6 +215,18 @@ defmodule RegistryManager.RepositoryInferenceTest do
       assert {:ok, "master"} = Repository.infer_repository_type("smkwlab/k94gjk04-master")
     end
 
+    test "infers sotsuron-report type before the -sotsuron substring can match" do
+      assert {:ok, "sotsuron-report"} =
+               Repository.infer_repository_type("k22rs001-sotsuron-report")
+
+      assert {:ok, "sotsuron-report"} =
+               Repository.infer_repository_type("smkwlab/k22rs001-sotsuron-report")
+    end
+
+    test "still infers sotsuron for plain thesis repositories" do
+      assert {:ok, "sotsuron"} = Repository.infer_repository_type("k21rs001-sotsuron")
+    end
+
     test "infers other type for thesis repositories" do
       assert {:ok, "other"} = Repository.infer_repository_type("k21rs001-thesis")
     end
