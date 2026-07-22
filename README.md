@@ -102,7 +102,7 @@ mix escript.build
 
 ## 前提条件
 
-- Elixir >= 1.14
+- Elixir >= 1.17
 - GitHub CLI（`gh auth login` 済み）
 - データリポジトリへの書き込み権限
 
