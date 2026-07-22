@@ -2,10 +2,13 @@ defmodule RegistryManager.CLI.Spec do
   @moduledoc """
   CLI のコマンド・オプション定義の単一ソース。
 
+  定義(オプションカタログ・コマンド表・enum)はこのモジュールが持ち、
   OptionParser に渡す strict/aliases、コマンドごとの有効オプション検証、
-  enum 値の検証、help 文面はすべてこのモジュールから導出される。
+  enum 値の検証、help 文面の導出は `ToolKit.CLI.Spec` に委譲する。
   ここに定義がないオプションはパース段階でエラーになる。
   """
+
+  alias ToolKit.CLI.Spec, as: EngineSpec
 
   @repo_types [
     "wr",
@@ -285,6 +288,17 @@ defmodule RegistryManager.CLI.Spec do
     }
   ]
 
+  @spec_struct %EngineSpec{
+    tool_name: "registry-manager",
+    tool_summary: "学生リポジトリレジストリ管理ツール",
+    option_catalog: @option_catalog,
+    global_option_names: @global_option_names,
+    commands: @commands
+  }
+
+  @doc "ToolKit の CLI エンジンに渡す spec"
+  def spec, do: @spec_struct
+
   @doc "コマンド定義の一覧"
   def commands, do: @commands
 
@@ -292,11 +306,7 @@ defmodule RegistryManager.CLI.Spec do
   def command_names, do: Enum.map(@commands, & &1.name)
 
   @doc "名前またはエイリアスからコマンド定義を引く"
-  def find_command(name) do
-    Enum.find(@commands, fn command ->
-      command.name == name or name in command.aliases
-    end)
-  end
+  def find_command(name), do: EngineSpec.find_command(@spec_struct, name)
 
   @doc """
   コマンドが使えるオプション定義（グローバル含む）。
@@ -304,40 +314,16 @@ defmodule RegistryManager.CLI.Spec do
   options の要素は名前(atom)か {名前, 上書きマップ} で、
   上書きマップでコマンド固有の values / doc を差し替えられる。
   """
-  def options_for(%{options: entries}) do
-    Enum.map(@global_option_names ++ entries, &resolve_option/1)
-  end
-
-  defp resolve_option(name) when is_atom(name) do
-    @option_catalog
-    |> Map.fetch!(name)
-    |> Map.put(:name, name)
-  end
-
-  defp resolve_option({name, override}) do
-    @option_catalog
-    |> Map.fetch!(name)
-    |> Map.merge(override)
-    |> Map.put(:name, name)
-  end
+  def options_for(command), do: EngineSpec.options_for(@spec_struct, command)
 
   @doc "OptionParser の strict リスト（全オプションの和集合）"
-  def strict_switches do
-    Enum.map(@option_catalog, fn {name, %{type: type}} -> {name, type} end)
-  end
+  def strict_switches, do: EngineSpec.strict_switches(@spec_struct)
 
   @doc "OptionParser の aliases リスト"
-  def aliases do
-    for {name, %{alias: short}} <- @option_catalog, short != nil, do: {short, name}
-  end
+  def aliases, do: EngineSpec.aliases(@spec_struct)
 
   @doc "コマンドが受け付けるオプション名の MapSet（未知のコマンドは nil）"
-  def allowed_for(name) do
-    case find_command(name) do
-      nil -> nil
-      command -> MapSet.new(options_for(command), & &1.name)
-    end
-  end
+  def allowed_for(name), do: EngineSpec.allowed_for(@spec_struct, name)
 
   @doc """
   パース済みオプションをコマンド定義に対して検証する。
@@ -346,134 +332,12 @@ defmodule RegistryManager.CLI.Spec do
   エラーにする。コマンド名が nil または未知の場合は :ok（dispatch 側が
   :help に落とす）。
   """
-  def validate_opts(command_name, opts) do
-    case find_command(command_name) do
-      nil -> :ok
-      command -> check_opts(command.name, opts, Map.new(options_for(command), &{&1.name, &1}))
-    end
-  end
-
-  defp check_opts(command_name, opts, defs) do
-    case Enum.flat_map(opts, &opt_violation(&1, command_name, defs)) do
-      [] -> :ok
-      messages -> {:error, Enum.join(messages, "\n")}
-    end
-  end
-
-  defp opt_violation({name, value}, command_name, defs) do
-    case defs[name] do
-      nil ->
-        ["--#{render_name(name)} は #{command_name} コマンドでは使えません"]
-
-      %{values: values} when is_list(values) ->
-        if value in values do
-          []
-        else
-          ["--#{render_name(name)} の値が不正です: #{value}（有効な値: #{Enum.join(values, ", ")}）"]
-        end
-
-      _ ->
-        []
-    end
-  end
+  def validate_opts(command_name, opts),
+    do: EngineSpec.validate_opts(@spec_struct, command_name, opts)
 
   @doc "グローバル help を spec から生成する"
-  def render_help do
-    command_sections = Enum.map_join(@commands, "\n", &render_command_section/1)
-
-    """
-    registry-manager - 学生リポジトリレジストリ管理ツール
-
-    使用方法:
-      registry-manager <command> [options]
-      registry-manager <command> --help
-
-    コマンド:
-    #{command_sections}
-    グローバルオプション:
-    #{render_options(global_options())}
-    例:
-    #{render_examples(@commands)}
-    """
-  end
+  def render_help, do: EngineSpec.render_help(@spec_struct)
 
   @doc "コマンド単体の help を spec から生成する（未知のコマンドは nil）"
-  def render_command_help(name) do
-    case find_command(name) do
-      nil ->
-        nil
-
-      command ->
-        """
-        registry-manager #{command.name} - #{command.summary}
-
-        使用方法:
-        #{Enum.map_join(command.usage, "\n", &"  registry-manager #{&1}")}
-
-        オプション:
-        #{render_options(options_for(command))}
-        例:
-        #{Enum.map_join(command.examples, "\n", &"  registry-manager #{&1}")}
-        """
-    end
-  end
-
-  defp render_command_section(command) do
-    usage_lines = Enum.map_join(command.usage, "\n", &"  #{&1}")
-
-    option_names =
-      Enum.map_join(command.options, " ", fn entry ->
-        entry |> resolve_option() |> render_option_name()
-      end)
-
-    option_line =
-      if command.options == [] do
-        ""
-      else
-        "      オプション: #{option_names}\n"
-      end
-
-    "#{usage_lines}\n      #{command.summary}\n#{option_line}"
-  end
-
-  defp render_options(options) do
-    Enum.map_join(options, "\n", &render_option_line/1)
-  end
-
-  defp render_option_line(option) do
-    value = if option.type == :string, do: " #{render_values(option)}", else: ""
-
-    if single_char_name?(option.name) do
-      "  -#{option.name}#{value}  #{option.doc}"
-    else
-      short = if option.alias, do: "-#{option.alias}, ", else: "    "
-      "  #{short}--#{render_name(option.name)}#{value}  #{option.doc}"
-    end
-  end
-
-  # 1 文字名のオプション（:t など）は短縮形のみを持つ
-  defp render_option_name(option) do
-    if single_char_name?(option.name) do
-      "-#{option.name}"
-    else
-      "--#{render_name(option.name)}"
-    end
-  end
-
-  defp single_char_name?(name), do: byte_size(Atom.to_string(name)) == 1
-
-  defp render_values(%{values: values}) when is_list(values), do: Enum.join(values, "|")
-  defp render_values(_), do: "VALUE"
-
-  defp render_examples(commands) do
-    commands
-    |> Enum.flat_map(& &1.examples)
-    |> Enum.map_join("\n", &"  registry-manager #{&1}")
-  end
-
-  defp global_options do
-    Enum.map(@global_option_names, &resolve_option/1)
-  end
-
-  defp render_name(name), do: String.replace(Atom.to_string(name), "_", "-")
+  def render_command_help(name), do: EngineSpec.render_command_help(@spec_struct, name)
 end

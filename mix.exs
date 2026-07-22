@@ -5,7 +5,7 @@ defmodule RegistryManager.MixProject do
     [
       app: :registry_manager,
       version: "0.1.0",
-      elixir: "~> 1.14",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       escript: [main_module: RegistryManager.CLI, name: "registry-manager"],
@@ -47,6 +47,7 @@ defmodule RegistryManager.MixProject do
 
   defp deps do
     [
+      {:tool_kit, github: "smkwlab/elixir-tool-kit", tag: "v0.1.0"},
       {:jason, "~> 1.4"},
       {:yaml_elixir, "~> 2.9"},
       {:req, "~> 0.4"},
