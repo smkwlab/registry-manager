@@ -139,11 +139,12 @@ defmodule RegistryManager.GitHubAPI.Parser do
   環境モードの判定
   """
   def detect_environment_mode do
-    # Check both System.get_env and Mix.env for comprehensive detection
+    # escript では Mix.env() が使えないため、環境変数とアプリケーション設定で判定する
+    # (テストは test_helper.exs が :env を :test に設定する)
     env_var = System.get_env("MIX_ENV")
-    mix_env = if Code.ensure_loaded?(Mix), do: Mix.env() |> to_string(), else: nil
+    app_env = Application.get_env(:registry_manager, :env)
 
-    if env_var == "test" or mix_env == "test" do
+    if env_var == "test" or app_env == :test do
       :test
     else
       :production
