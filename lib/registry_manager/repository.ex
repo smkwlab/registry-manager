@@ -132,21 +132,13 @@ defmodule RegistryManager.Repository do
     end
   end
 
-  # Get environment mode - works in both test and escript contexts
+  # Get environment mode - works in both test and escript contexts.
+  # escript では Mix.env() が使えないため、アプリケーション設定で判定する
+  # (テストは test_helper.exs が :env を :test に設定する)
   defp get_env_mode do
     case Application.get_env(:registry_manager, :env) do
-      :test ->
-        :test
-
-      nil ->
-        :prod
-
-      _ ->
-        try do
-          Mix.env()
-        rescue
-          UndefinedFunctionError -> :prod
-        end
+      :test -> :test
+      _ -> :prod
     end
   end
 
