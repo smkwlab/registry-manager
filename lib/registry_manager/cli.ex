@@ -15,16 +15,12 @@ defmodule RegistryManager.CLI do
   alias RegistryManager.Commands.Validate
   alias RegistryManager.Config
   alias RegistryManager.Repository
+  alias ToolKit.CLI.Exit, as: EngineExit
+  alias ToolKit.CLI.Parser, as: EngineParser
 
-  # テスト用の関数（通常時は System.halt と IO.puts を使用）
+  # テスト時は System.halt せず throw する（ToolKit.CLI.Exit の test_mode 規約）
   @spec exit_with_code(integer()) :: no_return()
-  defp exit_with_code(code) do
-    if Application.get_env(:registry_manager, :test_mode, false) do
-      throw({:cli_test_exit, code})
-    else
-      System.halt(code)
-    end
-  end
+  defp exit_with_code(code), do: EngineExit.exit_with_code(:registry_manager, code)
 
   defp print_output(message) do
     if Application.get_env(:registry_manager, :test_mode, false) do
@@ -49,38 +45,17 @@ defmodule RegistryManager.CLI do
 
   @doc false
   def parse_args(args) do
-    {opts, argv, invalid} =
-      OptionParser.parse(args, strict: Spec.strict_switches(), aliases: Spec.aliases())
+    # strict パース・help 短絡・コマンド別オプション検証は ToolKit に委譲し、
+    # 設定上書きと位置引数の解釈（コマンド別 parse_*）はここで行う
+    case EngineParser.parse(Spec.spec(), args) do
+      {:command, invoked, argv, opts} ->
+        case apply_config_overrides(opts) do
+          :ok -> parse_command([invoked | argv], opts)
+          {:error, _} = error -> error
+        end
 
-    cond do
-      invalid != [] ->
-        {:error, "不明なオプション: #{Enum.map_join(invalid, ", ", fn {name, _} -> name end)}"}
-
-      opts[:help] ->
-        parse_help_target(argv)
-
-      true ->
-        parse_validated_command(argv, opts)
-    end
-  end
-
-  # `<command> --help` はコマンド単体の help に落とす
-  defp parse_help_target([first | _]) do
-    case Spec.find_command(first) do
-      nil -> :help
-      command -> {:help_command, command.name}
-    end
-  end
-
-  defp parse_help_target(_), do: :help
-
-  # コマンドに属さないオプションと enum 違反をパース段階でエラーにする
-  defp parse_validated_command(argv, opts) do
-    with :ok <- Spec.validate_opts(first_arg(argv), opts),
-         :ok <- apply_config_overrides(opts) do
-      parse_command(argv, opts)
-    else
-      {:error, _} = error -> error
+      other ->
+        other
     end
   end
 
@@ -123,9 +98,6 @@ defmodule RegistryManager.CLI do
       Application.delete_env(:registry_manager, :config_path)
     end
   end
-
-  defp first_arg([first | _]), do: first
-  defp first_arg(_), do: nil
 
   @doc false
   def known_commands do
