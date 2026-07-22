@@ -26,6 +26,8 @@ defmodule RegistryManager.Commands.List do
 
   alias RegistryManager.{Cache, Config, GitHubAPI, TimestampManager}
   alias RegistryManager.CLI.Spec
+  alias ToolKit.Output.Table
+  alias ToolKit.Output.TextWidth
 
   require Logger
 
@@ -412,26 +414,7 @@ defmodule RegistryManager.Commands.List do
         build_column_data(repo_name, repo_data, opts)
       end)
 
-    # 各列の最大幅を計算
-    column_widths = calculate_column_widths(header_list, data_rows)
-
-    # ヘッダー行を作成
-    header_line = format_row_with_padding(header_list, column_widths)
-
-    # セパレータ行を作成
-    separator_line = build_dynamic_separator(column_widths)
-
-    # データ行を作成
-    formatted_rows =
-      Enum.map(data_rows, fn row ->
-        format_row_with_padding(row, column_widths)
-      end)
-
-    output =
-      [header_line, separator_line | formatted_rows]
-      |> Enum.join("\n")
-
-    {:ok, output}
+    {:ok, Table.render(header_list, data_rows)}
   end
 
   # Issue #107: Default timestamp display changed to Last Activity
@@ -546,102 +529,12 @@ defmodule RegistryManager.Commands.List do
     end
   end
 
-  # 列幅を計算する関数
-  defp calculate_column_widths(headers, data_rows) do
-    # 初期値としてヘッダーの表示幅を使用
-    initial_widths = Enum.map(headers, &display_width/1)
-
-    # 各データ行の各列の表示幅と比較して最大値を取る
-    Enum.reduce(data_rows, initial_widths, fn row, widths ->
-      row_widths = Enum.map(row, &display_width/1)
-
-      Enum.zip(widths, row_widths)
-      |> Enum.map(fn {current_max, row_width} -> max(current_max, row_width) end)
-    end)
-  end
-
   @doc """
   文字列の表示幅を計算します（全角文字を考慮）。
 
-  日本語環境での表示幅を正確に計算するため、
-  CJK文字、ひらがな、カタカナ、全角記号などを
-  2文字幅として扱います。
-
-  ## Examples
-
-      iex> display_width("Hello")
-      5
-
-      iex> display_width("こんにちは")
-      10
-
-      iex> display_width("Hello世界")
-      9
-
+  `ToolKit.Output.TextWidth.display_width/1` への委譲。
   """
-  def display_width(string) do
-    string
-    |> String.graphemes()
-    |> Enum.reduce(0, fn grapheme, width ->
-      width + char_display_width(grapheme)
-    end)
-  end
-
-  # 個々の文字の表示幅を判定
-  defp char_display_width(char) do
-    case String.to_charlist(char) do
-      [codepoint] -> unicode_display_width(codepoint)
-      # 複数コードポイントの場合は1文字幅として扱う
-      _ -> 1
-    end
-  end
-
-  # Unicode文字の表示幅を判定（簡素化版）
-  # 注: この実装は、厳密なEast Asian Width準拠ではなく、
-  # 日本語環境での一般的な表示に最適化された簡易版です。
-  # CJK文字、ひらがな、カタカナ、全角記号、ハングルを
-  # 主要な全角文字として扱い、それ以外は半角として扱います。
-  # 精度は実用上十分であることがテストで確認されています。
-  # 制御文字
-  defp unicode_display_width(codepoint) when codepoint <= 0x1F, do: 0
-  # ASCII
-  defp unicode_display_width(codepoint) when codepoint <= 0x7F, do: 1
-  # 制御文字
-  defp unicode_display_width(codepoint) when codepoint <= 0x9F, do: 0
-  # CJK系全般
-  defp unicode_display_width(codepoint) when codepoint >= 0x3000 and codepoint <= 0x9FFF, do: 2
-  # 全角記号
-  defp unicode_display_width(codepoint) when codepoint >= 0xFF00 and codepoint <= 0xFFEF, do: 2
-  # ハングル
-  defp unicode_display_width(codepoint) when codepoint >= 0xAC00 and codepoint <= 0xD7AF, do: 2
-  # その他デフォルト
-  defp unicode_display_width(_codepoint), do: 1
-
-  # パディングを適用して行をフォーマット
-  defp format_row_with_padding(columns, widths) do
-    columns
-    |> Enum.zip(widths)
-    |> Enum.map(fn {column, width} ->
-      pad_string_with_display_width(column, width)
-    end)
-    |> Enum.join("  ")
-  end
-
-  # 表示幅を考慮したパディング
-  defp pad_string_with_display_width(string, target_width) do
-    current_width = display_width(string)
-    padding_needed = max(0, target_width - current_width)
-    string <> String.duplicate(" ", padding_needed)
-  end
-
-  # 動的なセパレータを作成
-  defp build_dynamic_separator(widths) do
-    widths
-    |> Enum.map(fn width ->
-      String.duplicate("-", width)
-    end)
-    |> Enum.join("  ")
-  end
+  def display_width(string), do: TextWidth.display_width(string)
 
   defp format_protection_status(repo_data) do
     case Map.get(repo_data, "protection_status") do
