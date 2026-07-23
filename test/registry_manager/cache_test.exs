@@ -61,7 +61,7 @@ defmodule RegistryManager.CacheTest do
       {:ok, content} = File.read(cache_file)
       {:ok, cached_data} = Jason.decode(content)
 
-      assert cached_data["repository"] == "k21rs001-sotsuron"
+      assert cached_data["key"] == "k21rs001-sotsuron"
       assert cached_data["data"] == activity_data
       assert is_binary(cached_data["cached_at"])
       assert is_binary(cached_data["expires_at"])
@@ -289,7 +289,7 @@ defmodule RegistryManager.CacheTest do
       {:ok, content} = File.read(cache_file)
       {:ok, cached_data} = Jason.decode(content)
 
-      assert cached_data["repository"] == "test-repo"
+      assert cached_data["key"] == "test-repo"
       assert cached_data["data"] == pr_data
     end
 
