@@ -296,7 +296,8 @@ defmodule RegistryManager.Config do
   """
   @spec merge_configs([t() | map()]) :: t()
   def merge_configs(configs) do
-    defaults = Map.from_struct(%__MODULE__{})
+    # default_config/0 を明示的に最下層へ置き、既定値の出所を 1 箇所に保つ
+    defaults = Map.from_struct(default_config())
     layers = Enum.map(configs, &config_layer(&1, defaults))
 
     struct(__MODULE__, Layers.merge([defaults | layers]))

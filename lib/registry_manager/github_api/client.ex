@@ -188,8 +188,11 @@ defmodule RegistryManager.GitHubAPI.Client do
   end
 
   defp auth_opts(nil) do
-    # 旧実装と同じく token なしは Authorization ヘッダを付けない
-    # （ToolKit はトークン必須のため req_options でヘッダごと差し替える）
+    # 旧実装と同じく token なしは Authorization ヘッダを付けない。
+    # ToolKit はトークン必須のため req_options でヘッダごと差し替える。
+    # ToolKit v0.2.0 の run_request/4 は req_options を Keyword.merge で
+    # 最後に適用するため、この :headers が token_provider 由来のヘッダを
+    # 完全に置き換えることを確認済み
     [
       token_provider: fn -> {:ok, ""} end,
       req_options: [
