@@ -187,6 +187,9 @@ defmodule RegistryManager.Cache do
         }
   def get_cache_stats(opts \\ []) do
     cache_dir = Keyword.get(opts, :cache_dir, get_cache_dir())
+
+    # 集計対象は常に activity カテゴリ(cache サブコマンドの Summary が示す件数)。
+    # @default_category とは独立に "activity" 固定なので dir_opts/1 は使わない。
     ToolKitCache.stats(cache_dir: cache_dir, category: "activity")
   end
 
