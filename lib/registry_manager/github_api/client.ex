@@ -1,56 +1,48 @@
 defmodule RegistryManager.GitHubAPI.Client do
   @moduledoc """
-  GitHub API への実際のHTTPリクエスト処理
-  外部依存（GitHub CLI認証 + Req）を担当
+  GitHub API への HTTP 境界（ToolKit.GitHub.Client の薄いラッパ）
+
+  HTTP 送信・トークン取得・エラー分類の機構は `ToolKit.GitHub.Client` に
+  委譲し、本モジュールは registry-manager が使う endpoint と、従来の
+  エラーメッセージ語彙（"GitHub API error (STATUS): ..." /
+  "Request failed: ..."）への変換を担当する。
 
   このモジュールは外部依存のみを扱うため、テストカバレッジの対象外とする。
   実際のネットワーク通信とシステムコマンド実行を担当。
   """
 
+  alias ToolKit.GitHub.Client, as: ToolKitClient
+
+  @user_agent "registry-manager/1.0"
+  @token_error_message "GitHub CLI authentication failed. Run 'gh auth login'"
+
   @doc """
   GitHub CLI を使用してアクセストークンを取得
   """
   def get_github_token do
-    case System.cmd("gh", ["auth", "token"], stderr_to_stdout: true) do
-      {token, 0} ->
-        {:ok, String.trim(token)}
-
-      {_output, _exit_code} ->
-        {:error, "GitHub CLI authentication failed. Run 'gh auth login'"}
+    case ToolKitClient.gh_cli_token() do
+      {:ok, token} -> {:ok, token}
+      {:error, _reason} -> {:error, @token_error_message}
     end
   end
 
   @doc """
   GitHub API に HTTP リクエストを送信
+
+  `url` は完全 URL。`options[:token]` のトークンを使い、`options[:body]`
+  があれば JSON として送信する。
   """
   def send_request(method, url, options \\ []) do
-    headers = build_headers(options[:token])
-    body = options[:body]
+    {base_url, path} = split_url(url)
 
-    request_opts = [
-      method: method,
-      url: url,
-      headers: headers
-    ]
+    opts =
+      [base_url: base_url, user_agent: @user_agent]
+      |> Keyword.merge(auth_opts(options[:token]))
+      |> put_json(options[:body])
 
-    request_opts =
-      if body do
-        [json: body] ++ request_opts
-      else
-        request_opts
-      end
-
-    case Req.request(request_opts) do
-      {:ok, %{status: status, body: response_body}} when status in 200..299 ->
-        {:ok, response_body}
-
-      {:ok, %{status: status, body: response_body}} ->
-        error_message = extract_error_message(response_body, status)
-        {:error, "GitHub API error (#{status}): #{error_message}"}
-
-      {:error, reason} ->
-        {:error, "Request failed: #{inspect(reason)}"}
-    end
+    method
+    |> ToolKitClient.request(path, opts)
+    |> legacy_result()
   end
 
   @doc """
@@ -68,62 +60,48 @@ defmodule RegistryManager.GitHubAPI.Client do
   リポジトリのファイル内容を取得
   """
   def get_file_contents(repo, file_path) do
-    url = "https://api.github.com/repos/#{repo}/contents/#{file_path}"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo
+    |> ToolKitClient.get_file_contents(file_path, base_opts())
+    |> legacy_result()
   end
 
   @doc """
   リポジトリのファイル内容を更新
+
+  `content` は呼び出し側で base64 エンコード済み（Parser.encode_file_content）
+  のため、生テキストを再エンコードする `ToolKit.GitHub.Client.put_file_contents/5`
+  ではなく `put/3` をそのまま使う。
   """
   def update_file_contents(repo, file_path, content, sha, commit_message) do
-    url = "https://api.github.com/repos/#{repo}/contents/#{file_path}"
-
     body = %{
       message: commit_message,
       content: content,
       sha: sha
     }
 
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:put, url, token: token, body: body) do
-      {:ok, response}
-    end
+    "/repos/#{repo}/contents/#{file_path}"
+    |> ToolKitClient.put(body, base_opts())
+    |> legacy_result()
   end
 
   @doc """
   リポジトリ情報を取得
   """
   def get_repository_info(repo_name) do
-    url = "https://api.github.com/repos/#{repo_name}"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.get_repository(base_opts())
+    |> legacy_result()
   end
 
   @doc """
   リポジトリのコミット履歴を取得
   """
   def get_repository_commits(repo_name, options \\ []) do
-    author = options[:author]
-    per_page = options[:per_page] || 1
+    opts = [author: options[:author], per_page: options[:per_page] || 1] ++ base_opts()
 
-    params =
-      [per_page: per_page]
-      |> maybe_add_author(author)
-      |> URI.encode_query()
-
-    url = "https://api.github.com/repos/#{repo_name}/commits?#{params}"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.list_commits(opts)
+    |> legacy_result()
   end
 
   @doc """
@@ -131,110 +109,121 @@ defmodule RegistryManager.GitHubAPI.Client do
   組織所有のリポジトリで最も多くコミットしている人を見つける
   """
   def get_actual_developer(repo_name, options \\ []) do
-    per_page = options[:per_page] || 10
-    url = "https://api.github.com/repos/#{repo_name}/commits?per_page=#{per_page}"
+    opts = [per_page: options[:per_page] || 10] ++ base_opts()
 
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.list_commits(opts)
+    |> legacy_result()
   end
 
   @doc """
   リポジトリのプルリクエスト一覧を取得
   """
   def get_repository_pull_requests(repo_name, options \\ []) do
-    state = options[:state] || "all"
-    per_page = options[:per_page] || 100
+    opts =
+      [state: options[:state] || "all", per_page: options[:per_page] || 100] ++ base_opts()
 
-    params = URI.encode_query(state: state, per_page: per_page)
-    url = "https://api.github.com/repos/#{repo_name}/pulls?#{params}"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.list_pull_requests(opts)
+    |> legacy_result()
   end
 
   @doc """
   プルリクエストのレビュー一覧を取得
   """
   def get_pull_request_reviews(repo_name, pr_number, _options \\ []) do
-    url = "https://api.github.com/repos/#{repo_name}/pulls/#{pr_number}/reviews"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.list_pull_request_reviews(pr_number, base_opts())
+    |> legacy_result()
   end
 
   @doc """
   プルリクエストの保留中のレビューリクエストを取得
   """
   def get_pull_request_requested_reviewers(repo_name, pr_number, _options \\ []) do
-    url = "https://api.github.com/repos/#{repo_name}/pulls/#{pr_number}/requested_reviewers"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:get, url, token: token) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.get_requested_reviewers(pr_number, base_opts())
+    |> legacy_result()
   end
 
   @doc """
   Issue / Pull Request にコメントを投稿（archive 前の整理コメント用）
   """
   def create_issue_comment(repo_name, issue_number, body) do
-    url = "https://api.github.com/repos/#{repo_name}/issues/#{issue_number}/comments"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:post, url, token: token, body: %{body: body}) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.create_issue_comment(issue_number, body, base_opts())
+    |> legacy_result()
   end
 
   @doc """
   Pull Request をクローズ（archive 後は read-only になるため事前に閉じる）
   """
   def close_pull_request(repo_name, pr_number) do
-    url = "https://api.github.com/repos/#{repo_name}/pulls/#{pr_number}"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:patch, url, token: token, body: %{state: "closed"}) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.close_pull_request(pr_number, base_opts())
+    |> legacy_result()
   end
 
   @doc """
   リポジトリを archive する（卒業処理）
   """
   def archive_repository(repo_name) do
-    url = "https://api.github.com/repos/#{repo_name}"
-
-    with {:ok, token} <- get_github_token(),
-         {:ok, response} <- send_request(:patch, url, token: token, body: %{archived: true}) do
-      {:ok, response}
-    end
+    repo_name
+    |> ToolKitClient.archive_repository(base_opts())
+    |> legacy_result()
   end
 
   # プライベート関数
 
-  defp build_headers(token) do
-    base_headers = [
-      {"Accept", "application/vnd.github.v3+json"},
-      {"User-Agent", "registry-manager/1.0"}
-    ]
+  # トークンは ToolKit の既定プロバイダ（gh auth token）で取得する
+  defp base_opts, do: [user_agent: @user_agent]
 
-    if token do
-      [{"Authorization", "Bearer #{token}"} | base_headers]
-    else
-      base_headers
-    end
+  defp split_url(url) do
+    uri = URI.parse(url)
+    base_url = URI.to_string(%URI{scheme: uri.scheme, host: uri.host, port: uri.port})
+    path = uri.path || "/"
+    path = if uri.query, do: path <> "?" <> uri.query, else: path
+
+    {base_url, path}
   end
 
-  defp extract_error_message(%{"message" => message}, _status), do: message
-  defp extract_error_message(body, status) when is_binary(body), do: "#{status} - #{body}"
-  defp extract_error_message(_body, status), do: "HTTP #{status}"
+  defp auth_opts(nil) do
+    # 旧実装と同じく token なしは Authorization ヘッダを付けない。
+    # ToolKit はトークン必須のため req_options でヘッダごと差し替える。
+    # ToolKit v0.2.0 の run_request/4 は req_options を Keyword.merge で
+    # 最後に適用するため、この :headers が token_provider 由来のヘッダを
+    # 完全に置き換えることを確認済み
+    [
+      token_provider: fn -> {:ok, ""} end,
+      req_options: [
+        headers: [
+          {"accept", "application/vnd.github+json"},
+          {"user-agent", @user_agent}
+        ]
+      ]
+    ]
+  end
 
-  defp maybe_add_author(params, nil), do: params
-  defp maybe_add_author(params, author), do: [author: author] ++ params
+  defp auth_opts(token), do: [token_provider: fn -> {:ok, token} end]
+
+  defp put_json(opts, nil), do: opts
+  defp put_json(opts, body), do: Keyword.put(opts, :json, body)
+
+  # ToolKit の分類済みエラーを従来のメッセージ語彙に写す
+  defp legacy_result({:ok, body}), do: {:ok, body}
+
+  defp legacy_result({:error, :not_found}),
+    do: {:error, "GitHub API error (404): Not Found"}
+
+  defp legacy_result({:error, :unauthorized}),
+    do: {:error, "GitHub API error (401/403): authentication failed or insufficient permissions"}
+
+  defp legacy_result({:error, {:http_error, status, message}}),
+    do: {:error, "GitHub API error (#{status}): #{message}"}
+
+  defp legacy_result({:error, {:request_failed, reason}}),
+    do: {:error, "Request failed: #{inspect(reason)}"}
+
+  defp legacy_result({:error, {:token_error, _reason}}),
+    do: {:error, @token_error_message}
 end

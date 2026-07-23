@@ -8,7 +8,13 @@ defmodule RegistryManager.Config do
   2. Environment variables
   3. User config file (~/.config/registry-manager/config.yml)
   4. Default values
+
+  レイヤの読み込み・マージと規約ヘルパ(owner 導出・名簿 CSV・owner/repo
+  検証)の機構は `ToolKit.Config.Layers` に委譲し、本モジュールは
+  registry-manager の設定スキーマ(struct)と規約の適用順序を持つ。
   """
+
+  alias ToolKit.Config.Layers
 
   # csv_path: optional student-roster CSV for name resolution (nil = disabled)
   # registry_repo: GitHub repository ("owner/repo") holding data/registry.json
@@ -59,6 +65,21 @@ defmodule RegistryManager.Config do
 
   @valid_log_levels ["debug", "info", "warn", "error"]
 
+  @env_prefix "REGISTRY_MANAGER"
+
+  # 環境変数 spec（ToolKit.Config.Layers.read_env）。変数名は
+  # REGISTRY_MANAGER_<キー経路の大文字連結>。api.timeout_seconds のみ
+  # 歴史的経緯で REGISTRY_MANAGER_API_TIMEOUT（末端名の差し替え）
+  @env_spec %{
+    csv_path: :string,
+    github_org: :string,
+    registry_repo: :string,
+    test_student_ids: :string_list,
+    log_level: :string,
+    cache: %{enabled: :boolean, ttl_hours: :integer},
+    api: %{timeout_seconds: {:integer, "TIMEOUT"}}
+  }
+
   @doc """
   Returns default configuration values.
   """
@@ -81,117 +102,28 @@ defmodule RegistryManager.Config do
           optional(:test_student_ids) => [String.t()]
         }
   def load_env_config do
-    %{}
-    |> put_if_env(:csv_path, "REGISTRY_MANAGER_CSV_PATH")
-    |> put_if_env(:github_org, "REGISTRY_MANAGER_GITHUB_ORG")
-    |> put_if_env(:registry_repo, "REGISTRY_MANAGER_REGISTRY_REPO")
-    |> put_test_student_ids_env()
-    |> put_if_env(:log_level, "REGISTRY_MANAGER_LOG_LEVEL")
-    |> put_cache_env()
-    |> put_api_env()
-  catch
-    :throw, _ -> %{}
-  end
-
-  defp put_test_student_ids_env(config) do
-    case System.get_env("REGISTRY_MANAGER_TEST_STUDENT_IDS") do
-      nil ->
-        config
-
-      value ->
-        ids = value |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
-        Map.put(config, :test_student_ids, ids)
-    end
-  end
-
-  defp put_if_env(config, key, env_var) do
-    case System.get_env(env_var) do
-      nil -> config
-      value -> Map.put(config, key, value)
-    end
-  end
-
-  defp put_cache_env(config) do
-    cache_config = %{}
-
-    cache_config =
-      cache_config
-      |> put_cache_enabled_env()
-      |> put_cache_ttl_env()
-
-    if cache_config == %{} do
-      config
-    else
-      Map.put(config, :cache, cache_config)
-    end
-  end
-
-  defp put_cache_enabled_env(cache_config) do
-    case System.get_env("REGISTRY_MANAGER_CACHE_ENABLED") do
-      nil -> cache_config
-      "true" -> Map.put(cache_config, :enabled, true)
-      "false" -> Map.put(cache_config, :enabled, false)
-      _ -> throw(:invalid_boolean)
-    end
-  end
-
-  defp put_cache_ttl_env(cache_config) do
-    case System.get_env("REGISTRY_MANAGER_CACHE_TTL_HOURS") do
-      nil ->
-        cache_config
-
-      value ->
-        case Integer.parse(value) do
-          {int_value, ""} -> Map.put(cache_config, :ttl_hours, int_value)
-          _ -> throw(:invalid_integer)
-        end
-    end
-  end
-
-  defp put_api_env(config) do
-    api_config = %{}
-
-    api_config =
-      case System.get_env("REGISTRY_MANAGER_API_TIMEOUT") do
-        nil ->
-          api_config
-
-        value ->
-          case Integer.parse(value) do
-            {int_value, ""} -> Map.put(api_config, :timeout_seconds, int_value)
-            _ -> throw(:invalid_integer)
-          end
-      end
-
-    if api_config == %{} do
-      config
-    else
-      Map.put(config, :api, api_config)
+    case Layers.read_env(@env_prefix, @env_spec) do
+      {:ok, config} -> config
+      # 不正な値（boolean / integer の変換失敗）は env 層全体を無視する
+      {:error, _message} -> %{}
     end
   end
 
   @doc """
   Loads user configuration from the annotated YAML file.
   Returns map with only explicitly set values if file exists, empty map otherwise.
+
+  YAML 1.2 は JSON の上位互換なので、YAML パーサ 1 本で config.yml と
+  旧 config.json の両方を読める（issue #18）。
   """
   @spec load_user_config(String.t()) :: map()
   def load_user_config(config_file_path) do
-    if File.exists?(config_file_path) do
-      parse_config_file(config_file_path)
-    else
-      %{}
-    end
-  end
-
-  # YAML 1.2 は JSON の上位互換なので、YAML パーサ 1 本で
-  # config.yml と旧 config.json の両方を読める（issue #18）
-  defp parse_config_file(config_file_path) do
-    case YamlElixir.read_from_file(config_file_path) do
-      {:ok, config} when is_map(config) ->
+    case Layers.load_file(config_file_path) do
+      {:ok, config} ->
         config
 
-      _ ->
-        IO.puts(:stderr, "Failed to parse config file: #{config_file_path}")
+      {:error, {:parse_error, path}} ->
+        IO.puts(:stderr, "Failed to parse config file: #{path}")
         %{}
     end
   end
@@ -211,12 +143,12 @@ defmodule RegistryManager.Config do
         Application.get_env(:registry_manager, :config_path) ||
         get_default_config_path()
 
-    default_config = default_config()
     user_config = load_user_config(path)
     env_config = load_env_config()
     cli_overrides = Application.get_env(:registry_manager, :cli_overrides, %{})
 
-    merge_configs([default_config, user_config, env_config, cli_overrides])
+    [user_config, env_config, cli_overrides]
+    |> merge_configs()
     |> apply_github_org_convention()
     |> apply_csv_convention()
   end
@@ -227,11 +159,9 @@ defmodule RegistryManager.Config do
   # ままにし、GitHubAPI.build_full_repo_name/1 が呼ばれた時点で明示エラーにさせる。
   @doc false
   @spec apply_github_org_convention(t()) :: t()
-  def apply_github_org_convention(%__MODULE__{github_org: org} = config) when org in [nil, ""] do
-    %{config | github_org: owner_from_registry_repo(config.registry_repo)}
+  def apply_github_org_convention(%__MODULE__{} = config) do
+    %{config | github_org: Layers.derive_github_org(config.github_org, config.registry_repo)}
   end
-
-  def apply_github_org_convention(config), do: config
 
   @github_org_error ~s|github_org is not configured. Set "github_org" (or "registry_repo", | <>
                       "whose owner is used) in ~/.config/registry-manager/config.yml, " <>
@@ -249,18 +179,9 @@ defmodule RegistryManager.Config do
     end
   end
 
-  defp owner_from_registry_repo(registry_repo) when is_binary(registry_repo) do
-    case String.split(registry_repo, "/") do
-      [owner, _repo] when owner != "" -> owner
-      _ -> nil
-    end
-  end
-
-  defp owner_from_registry_repo(_registry_repo), do: nil
-
   # csv_path 未設定（nil / 空文字列）のとき、規約パス
   # ~/.config/<github_org>/students.csv が存在すればそれを使う（issue #16）。
-  # 明示設定（config.json / REGISTRY_MANAGER_CSV_PATH）が常に優先。
+  # 明示設定（config.yml / REGISTRY_MANAGER_CSV_PATH）が常に優先。
   # 名簿 CSV はローカル管理方針のためリポジトリ・レジストリには置かない。
   # load_config の内部実装だが、home を注入したテストのために public にしている。
   @doc false
@@ -268,33 +189,16 @@ defmodule RegistryManager.Config do
   def apply_csv_convention(config, home \\ System.user_home())
 
   def apply_csv_convention(%__MODULE__{csv_path: csv} = config, home) when csv in [nil, ""] do
-    conventional = safe_conventional_csv_path(config.github_org, home)
-
-    if conventional && File.exists?(conventional) do
-      %{config | csv_path: conventional}
-    else
-      %{config | csv_path: nil}
-    end
+    %{config | csv_path: Layers.find_conventional_csv(config.github_org, home)}
   end
 
   def apply_csv_convention(config, _home), do: config
-
-  # github_org / home が使えない環境（未設定・HOME なし）では規約導出をスキップ
-  defp safe_conventional_csv_path(github_org, home)
-       when is_binary(github_org) and github_org != "" and is_binary(home) do
-    conventional_csv_path(github_org, home)
-  end
-
-  defp safe_conventional_csv_path(_github_org, _home), do: nil
 
   @doc """
   Returns the conventional roster CSV path for an organization.
   """
   @spec conventional_csv_path(String.t(), String.t()) :: String.t()
-  def conventional_csv_path(github_org, home \\ System.user_home!())
-      when is_binary(github_org) and is_binary(home) do
-    Path.join([home, ".config", github_org, "students.csv"])
-  end
+  defdelegate conventional_csv_path(github_org, home \\ System.user_home!()), to: Layers
 
   @doc """
   Returns the default config file path (annotated YAML, issue #18).
@@ -304,7 +208,7 @@ defmodule RegistryManager.Config do
   """
   @spec get_default_config_path() :: String.t()
   def get_default_config_path do
-    Path.join([System.user_home!(), ".config", "registry-manager", "config.yml"])
+    Layers.default_config_path("registry-manager")
   end
 
   @doc """
@@ -338,11 +242,7 @@ defmodule RegistryManager.Config do
   Returns true when the value is in "owner/repo" format.
   """
   @spec valid_registry_repo?(String.t()) :: boolean()
-  def valid_registry_repo?(value) when is_binary(value) do
-    # [^/\s]+ がスラッシュを含まないため「/ をちょうど 1 つ含む」形式のみ許可
-    # （owner/repo/extra のような 3 セグメント以上は不一致）
-    Regex.match?(~r{\A[^/\s]+/[^/\s]+\z}, value)
-  end
+  defdelegate valid_registry_repo?(value), to: Layers, as: :valid_owner_repo?
 
   defp validate_registry_repo(nil), do: :ok
 
@@ -383,174 +283,26 @@ defmodule RegistryManager.Config do
   """
   @spec map_to_struct(map()) :: t()
   def map_to_struct(map) when is_map(map) do
-    config = struct(__MODULE__, [])
-
-    Enum.reduce(map, config, fn
-      {"csv_path", value}, acc when is_binary(value) ->
-        %{acc | csv_path: value}
-
-      {:csv_path, value}, acc when is_binary(value) ->
-        %{acc | csv_path: value}
-
-      {"github_org", value}, acc when is_binary(value) ->
-        %{acc | github_org: value}
-
-      {:github_org, value}, acc when is_binary(value) ->
-        %{acc | github_org: value}
-
-      {"registry_repo", value}, acc when is_binary(value) ->
-        %{acc | registry_repo: value}
-
-      {:registry_repo, value}, acc when is_binary(value) ->
-        %{acc | registry_repo: value}
-
-      {"test_student_ids", value}, acc when is_list(value) ->
-        %{acc | test_student_ids: Enum.filter(value, &is_binary/1)}
-
-      {:test_student_ids, value}, acc when is_list(value) ->
-        %{acc | test_student_ids: Enum.filter(value, &is_binary/1)}
-
-      {"log_level", value}, acc when is_binary(value) ->
-        %{acc | log_level: value}
-
-      {:log_level, value}, acc when is_binary(value) ->
-        %{acc | log_level: value}
-
-      {"cache", cache_map}, acc when is_map(cache_map) ->
-        cache_config = merge_cache_config(acc.cache, cache_map)
-        %{acc | cache: cache_config}
-
-      {:cache, cache_map}, acc when is_map(cache_map) ->
-        cache_config = merge_cache_config(acc.cache, cache_map)
-        %{acc | cache: cache_config}
-
-      {"api", api_map}, acc when is_map(api_map) ->
-        api_config = merge_api_config(acc.api, api_map)
-        %{acc | api: api_config}
-
-      {:api, api_map}, acc when is_map(api_map) ->
-        api_config = merge_api_config(acc.api, api_map)
-        %{acc | api: api_config}
-
-      {_key, _value}, acc ->
-        acc
-    end)
-  end
-
-  defp merge_cache_config(base_cache, cache_map) do
-    Enum.reduce(cache_map, base_cache, fn
-      {"enabled", value}, acc when is_boolean(value) ->
-        %{acc | enabled: value}
-
-      {:enabled, value}, acc when is_boolean(value) ->
-        %{acc | enabled: value}
-
-      {"ttl_hours", value}, acc when is_integer(value) ->
-        %{acc | ttl_hours: value}
-
-      {:ttl_hours, value}, acc when is_integer(value) ->
-        %{acc | ttl_hours: value}
-
-      {"max_size_mb", value}, acc when is_integer(value) ->
-        %{acc | max_size_mb: value}
-
-      {:max_size_mb, value}, acc when is_integer(value) ->
-        %{acc | max_size_mb: value}
-
-      {_key, _value}, acc ->
-        acc
-    end)
-  end
-
-  defp merge_api_config(base_api, api_map) do
-    Enum.reduce(api_map, base_api, fn
-      {"timeout_seconds", value}, acc when is_integer(value) ->
-        %{acc | timeout_seconds: value}
-
-      {:timeout_seconds, value}, acc when is_integer(value) ->
-        %{acc | timeout_seconds: value}
-
-      {"max_concurrent", value}, acc when is_integer(value) ->
-        %{acc | max_concurrent: value}
-
-      {:max_concurrent, value}, acc when is_integer(value) ->
-        %{acc | max_concurrent: value}
-
-      {_key, _value}, acc ->
-        acc
-    end)
+    merge_configs([map])
   end
 
   @doc """
   Merges multiple configurations with later configs taking priority.
+
+  マージ規則は `ToolKit.Config.Layers.merge/1` に従う（nil は既存値を
+  上書きしない・入れ子 map は再帰マージ）。map レイヤは defaults を
+  テンプレートにキーを正規化する（string / atom キー両対応、未知キーは
+  無視）。
   """
   @spec merge_configs([t() | map()]) :: t()
   def merge_configs(configs) do
-    Enum.reduce(configs, %__MODULE__{}, fn config, acc ->
-      merge_single_config(acc, config)
-    end)
+    # default_config/0 を明示的に最下層へ置き、既定値の出所を 1 箇所に保つ
+    defaults = Map.from_struct(default_config())
+    layers = Enum.map(configs, &config_layer(&1, defaults))
+
+    struct(__MODULE__, Layers.merge([defaults | layers]))
   end
 
-  defp merge_single_config(base, %__MODULE__{} = config) do
-    %{
-      base
-      | csv_path: config.csv_path,
-        github_org: config.github_org,
-        registry_repo: config.registry_repo,
-        test_student_ids: config.test_student_ids,
-        cache: merge_cache_struct(base.cache, config.cache),
-        api: merge_api_struct(base.api, config.api),
-        log_level: config.log_level
-    }
-  end
-
-  defp merge_single_config(base, config) when is_map(config) do
-    # 直接マップの値を使用してマージ（atom key と string key の両方をサポート）
-    base
-    |> merge_if_present(config, :csv_path, "csv_path")
-    |> merge_if_present(config, :github_org, "github_org")
-    |> merge_if_present(config, :registry_repo, "registry_repo")
-    |> merge_if_present(config, :test_student_ids, "test_student_ids")
-    |> merge_if_present(config, :log_level, "log_level")
-    |> merge_cache_map(config)
-    |> merge_api_map(config)
-  end
-
-  defp merge_if_present(base, config, atom_key, string_key) do
-    # atom key を優先、次に string key をチェック
-    case Map.get(config, atom_key) || Map.get(config, string_key) do
-      nil -> base
-      value -> Map.put(base, atom_key, value)
-    end
-  end
-
-  defp merge_cache_map(base, config) do
-    case Map.get(config, :cache) || Map.get(config, "cache") do
-      nil ->
-        base
-
-      cache_map ->
-        merged_cache = merge_cache_config(base.cache, cache_map)
-        %{base | cache: merged_cache}
-    end
-  end
-
-  defp merge_api_map(base, config) do
-    case Map.get(config, :api) || Map.get(config, "api") do
-      nil ->
-        base
-
-      api_map ->
-        merged_api = merge_api_config(base.api, api_map)
-        %{base | api: merged_api}
-    end
-  end
-
-  defp merge_cache_struct(base, new) do
-    %{base | enabled: new.enabled, ttl_hours: new.ttl_hours, max_size_mb: new.max_size_mb}
-  end
-
-  defp merge_api_struct(base, new) do
-    %{base | timeout_seconds: new.timeout_seconds, max_concurrent: new.max_concurrent}
-  end
+  defp config_layer(%__MODULE__{} = config, _defaults), do: Map.from_struct(config)
+  defp config_layer(map, defaults) when is_map(map), do: Layers.normalize_keys(map, defaults)
 end
