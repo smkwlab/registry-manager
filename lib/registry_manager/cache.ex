@@ -7,15 +7,13 @@ defmodule RegistryManager.Cache do
 
   The cache mechanism (TTL envelope, atomic writes, per-category directories)
   is provided by `ToolKit.Cache`. This module keeps the registry-manager
-  vocabulary (repository names, `activity` / `pr-status` categories, hour/minute
-  TTLs, the `CacheStatus` struct) and delegates the actual file I/O to it.
+  vocabulary (repository names, the `activity` category, hour/minute TTLs,
+  the `CacheStatus` struct) and delegates the actual file I/O to it.
 
   Cache structure:
   ~/.cache/registry-manager/
-  ├── activity/           # list --activity 用キャッシュ
-  │   └── {repo_name}.json
-  ├── pr-status/          # pr-status 用キャッシュ
-  │   └── {repo_name}.json
+  └── activity/           # activity カテゴリのキャッシュ
+      └── {repo_name}.json
   """
 
   alias ToolKit.Cache, as: ToolKitCache
@@ -69,16 +67,13 @@ defmodule RegistryManager.Cache do
 
   ## Parameters
   - `repo_name`: Repository name
-  - `category`: Cache category ("activity", "pr-status", etc.)
+  - `category`: Cache category ("activity", etc.)
   - `opts`: Options including `:cache_dir`
 
   ## Examples
 
       iex> Cache.get_cache_path("k21rs001-sotsuron", "activity")
       "~/.cache/registry-manager/activity/k21rs001-sotsuron.json"
-
-      iex> Cache.get_cache_path("k21rs001-sotsuron", "pr-status")
-      "~/.cache/registry-manager/pr-status/k21rs001-sotsuron.json"
   """
   @spec get_cache_path(String.t(), String.t(), keyword()) :: String.t()
   def get_cache_path(repo_name, category, opts \\ []) do

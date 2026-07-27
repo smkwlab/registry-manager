@@ -94,17 +94,6 @@ defmodule RegistryManager.GitHubAPI.Client do
   end
 
   @doc """
-  リポジトリのコミット履歴を取得
-  """
-  def get_repository_commits(repo_name, options \\ []) do
-    opts = [author: options[:author], per_page: options[:per_page] || 1] ++ base_opts()
-
-    repo_name
-    |> ToolKitClient.list_commits(opts)
-    |> legacy_result()
-  end
-
-  @doc """
   最近のコミット履歴から実際の開発者を特定
   組織所有のリポジトリで最も多くコミットしている人を見つける
   """
@@ -125,24 +114,6 @@ defmodule RegistryManager.GitHubAPI.Client do
 
     repo_name
     |> ToolKitClient.list_pull_requests(opts)
-    |> legacy_result()
-  end
-
-  @doc """
-  プルリクエストのレビュー一覧を取得
-  """
-  def get_pull_request_reviews(repo_name, pr_number, _options \\ []) do
-    repo_name
-    |> ToolKitClient.list_pull_request_reviews(pr_number, base_opts())
-    |> legacy_result()
-  end
-
-  @doc """
-  プルリクエストの保留中のレビューリクエストを取得
-  """
-  def get_pull_request_requested_reviewers(repo_name, pr_number, _options \\ []) do
-    repo_name
-    |> ToolKitClient.get_requested_reviewers(pr_number, base_opts())
     |> legacy_result()
   end
 

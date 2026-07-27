@@ -232,7 +232,7 @@ defmodule RegistryManager.CLITest do
     end
 
     test "command --help returns command-scoped help" do
-      assert {:help_command, "pr-status"} = CLI.parse_args(["pr-status", "--help"])
+      assert {:help_command, "list"} = CLI.parse_args(["list", "--help"])
       assert :help = CLI.parse_args(["--help"])
     end
   end
@@ -260,14 +260,9 @@ defmodule RegistryManager.CLITest do
       assert message =~ "--sort-by-time"
     end
 
-    test "list rejects pr-status sort keys" do
+    test "list rejects removed activity sort keys" do
       assert {:error, message} = CLI.parse_args(["list", "--sort", "updated"])
       assert message =~ "updated"
-    end
-
-    test "pr-status sort surface is unchanged" do
-      assert {:pr_status, nil, opts} = CLI.parse_args(["pr-status", "--sort", "updated", "-r"])
-      assert opts[:sort] == "updated"
     end
   end
 
@@ -301,7 +296,7 @@ defmodule RegistryManager.CLITest do
     end
 
     test "--org is a global override" do
-      assert {:pr_status, nil, _opts} = CLI.parse_args(["pr-status", "--org", "acme"])
+      assert {:list, nil, _opts} = CLI.parse_args(["list", "--org", "acme"])
       assert Application.get_env(:registry_manager, :cli_overrides) == %{github_org: "acme"}
     end
 

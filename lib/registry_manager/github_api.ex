@@ -10,8 +10,6 @@ defmodule RegistryManager.GitHubAPI do
   alias RegistryManager.GitHubAPI.{Client, Parser}
   alias RegistryManager.Repository.Compatibility
 
-  require Logger
-
   # レジストリファイルは data/registry.json に固定
   # （旧名 repositories.json の互換は持たない — 公開前に後方互換を全廃、issue #21）
   @registry_file_path "data/registry.json"
@@ -74,17 +72,6 @@ defmodule RegistryManager.GitHubAPI do
   end
 
   @doc """
-  GitHubリポジトリの最終活動時刻を取得
-  """
-  def get_repository_activity(repo_name, opts \\ []) do
-    if use_mock?() do
-      apply(RegistryManager.Test.GitHubAPIMock, :get_repository_activity, [repo_name])
-    else
-      get_repository_activity_impl(repo_name, opts)
-    end
-  end
-
-  @doc """
   リポジトリの実際の開発者を特定
   組織所有の場合はコミット履歴から最も活発な開発者を特定
   """
@@ -93,47 +80,6 @@ defmodule RegistryManager.GitHubAPI do
       apply(RegistryManager.Test.GitHubAPIMock, :get_actual_developer, [repo_name, opts])
     else
       get_actual_developer_impl(repo_name, opts)
-    end
-  end
-
-  @doc """
-  リポジトリのプルリクエスト情報を取得
-  """
-  def get_repository_pull_requests(repo_name, opts \\ []) do
-    if use_mock?() do
-      apply(RegistryManager.Test.GitHubAPIMock, :get_repository_pull_requests, [repo_name, opts])
-    else
-      get_repository_pull_requests_impl(repo_name, opts)
-    end
-  end
-
-  @doc """
-  プルリクエストのレビュー情報を取得
-  """
-  def get_pull_request_reviews(repo_name, pr_number, opts \\ []) do
-    if use_mock?() do
-      apply(RegistryManager.Test.GitHubAPIMock, :get_pull_request_reviews, [
-        repo_name,
-        pr_number,
-        opts
-      ])
-    else
-      get_pull_request_reviews_impl(repo_name, pr_number, opts)
-    end
-  end
-
-  @doc """
-  プルリクエストの保留中のレビューリクエストを取得
-  """
-  def get_pull_request_requested_reviewers(repo_name, pr_number, opts \\ []) do
-    if use_mock?() do
-      apply(RegistryManager.Test.GitHubAPIMock, :get_pull_request_requested_reviewers, [
-        repo_name,
-        pr_number,
-        opts
-      ])
-    else
-      get_pull_request_requested_reviewers_impl(repo_name, pr_number, opts)
     end
   end
 
@@ -245,117 +191,6 @@ defmodule RegistryManager.GitHubAPI do
     end
   end
 
-  defp get_repository_activity_impl(repo_name, opts) do
-    owner_only = Keyword.get(opts, :owner_only, false)
-
-    if owner_only do
-      get_owner_activity_impl(repo_name)
-    else
-      get_general_activity_impl(repo_name)
-    end
-  end
-
-  defp get_general_activity_impl(repo_name) do
-    with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name),
-         {:ok, response} <- Client.get_repository_info(full_repo_name),
-         {:ok, activity_time} <- Parser.extract_repository_activity(response) do
-      {:ok, activity_time}
-    end
-  end
-
-  defp get_owner_activity_impl(repo_name) do
-    # 常にregistryデータから取得（リポジトリ名からの学生ID抽出は不可能）
-    with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name) do
-      get_owner_activity_from_registry(repo_name, full_repo_name)
-    end
-  end
-
-  defp get_owner_activity_from_registry(repo_name, full_repo_name) do
-    with {:ok, {registry_data, _sha}} <- get_repositories_json(),
-         {:ok, repo_info} <- get_repository_info_from_registry(registry_data, repo_name),
-         {:ok, owner_activities} <- get_all_owners_activity(repo_info, full_repo_name) do
-      {:ok, owner_activities}
-    else
-      {:error, reason} ->
-        Logger.debug(
-          "Failed to get owner activity from registry for #{repo_name}: #{inspect(reason)}"
-        )
-
-        {:error, reason}
-    end
-  end
-
-  defp get_repository_info_from_registry(registry_data, repo_name) do
-    case Map.get(registry_data, repo_name) do
-      nil -> {:error, "Repository not found in registry"}
-      repo_info -> {:ok, repo_info}
-    end
-  end
-
-  # 複数オーナーのアクティビティを取得
-  defp get_all_owners_activity(repo_info, full_repo_name) do
-    owners = Compatibility.get_all_github_usernames(repo_info)
-
-    if owners == [] do
-      {:error, "No github_username in registry"}
-    else
-      config = Config.load_config()
-
-      # Task.async_streamを使用してレート制限対策を実装
-      activities =
-        owners
-        |> Task.async_stream(
-          fn owner ->
-            get_single_owner_activity(full_repo_name, owner)
-          end,
-          max_concurrency: min(config.api.max_concurrent, length(owners)),
-          timeout: config.api.timeout_seconds * 1000,
-          ordered: false,
-          on_timeout: :kill_task
-        )
-        |> Enum.filter(fn
-          {:ok, {:ok, _}} -> true
-          _ -> false
-        end)
-        |> Enum.map(fn {:ok, {:ok, date}} -> date end)
-
-      case activities do
-        [] ->
-          {:error, "No owner activity found"}
-
-        dates ->
-          # 最新のアクティビティを選択
-          latest_date = get_latest_date(dates)
-          {:ok, latest_date}
-      end
-    end
-  end
-
-  defp get_single_owner_activity(full_repo_name, owner) do
-    with {:ok, commits} <-
-           Client.get_repository_commits(full_repo_name, author: owner, per_page: 1),
-         {:ok, latest_date} <- Parser.extract_latest_commit_date(commits) do
-      {:ok, latest_date}
-    else
-      {:error, reason} ->
-        Logger.debug("Failed to get activity for owner #{owner}: #{inspect(reason)}")
-        {:error, reason}
-    end
-  end
-
-  defp get_latest_date(dates) do
-    dates
-    |> Enum.map(fn date_string ->
-      case DateTime.from_iso8601(date_string) do
-        {:ok, datetime, _} -> datetime
-        _ -> nil
-      end
-    end)
-    |> Enum.filter(&(&1 != nil))
-    |> Enum.max(DateTime)
-    |> DateTime.to_iso8601()
-  end
-
   defp validate_test_data_safety(new_data) do
     production_mode = Parser.detect_environment_mode() == :production
     test_student_ids = Config.load_config().test_student_ids
@@ -379,30 +214,6 @@ defmodule RegistryManager.GitHubAPI do
          {:ok, commits} <- Client.get_actual_developer(full_repo_name, opts),
          {:ok, developer} <- Parser.extract_actual_developer(commits, org) do
       {:ok, developer}
-    end
-  end
-
-  defp get_repository_pull_requests_impl(repo_name, opts) do
-    with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name),
-         {:ok, pull_requests} <- Client.get_repository_pull_requests(full_repo_name, opts),
-         {:ok, pr_status} <- Parser.extract_pr_status(pull_requests) do
-      {:ok, pr_status}
-    end
-  end
-
-  defp get_pull_request_reviews_impl(repo_name, pr_number, opts) do
-    with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name),
-         {:ok, reviews} <- Client.get_pull_request_reviews(full_repo_name, pr_number, opts),
-         {:ok, review_status} <- Parser.extract_review_status(reviews) do
-      {:ok, review_status}
-    end
-  end
-
-  defp get_pull_request_requested_reviewers_impl(repo_name, pr_number, opts) do
-    with {:ok, {full_repo_name, _org}} <- build_full_repo_name(repo_name),
-         {:ok, response} <-
-           Client.get_pull_request_requested_reviewers(full_repo_name, pr_number, opts) do
-      {:ok, Parser.extract_requested_reviewers(response)}
     end
   end
 

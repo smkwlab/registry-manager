@@ -1,60 +1,50 @@
 defmodule RegistryManager.Commands.List do
   @moduledoc """
-  List command implementation for registry-manager v4.
+  List command implementation for registry-manager.
 
-  Replaces the old 'status' command and provides comprehensive repository listing
-  with various display modes, sorting options, and output formats.
+  Provides a registry view: it renders what is recorded in the registry
+  (data/registry.json) without making any per-repository GitHub API calls.
+  Live monitoring (activity times, PR status, live protection state) is the
+  responsibility of thesis-monitor, not this tool.
 
   Features:
   - Basic mode: Repository names only
-  - Long mode (-l/--long): Detailed table with student information
+  - Long mode (-l/--long): Registry detail table
+    (type / GitHub user / protection[recorded] / registry updated)
   - Filtering: By repository type (--type)
-  - Sorting: Alphabetical (default) or by time (--sort time / -t)
+  - Sorting: Alphabetical (default) or by registry-updated time (--sort time / -t)
   - Output formats: table (default), csv, json
-  - Activity information: Last activity (default in long mode), owner activity, or registry updated
-  - Caching: GitHub API responses cached for performance
 
-  ## Timestamp Display (Issue #107)
-
-  By default in long mode, the "Last Activity" (last push time from GitHub) is displayed.
-  This can be changed with the following options:
-
-  - `--show-registry-updated`: Show "Registry Updated" instead of "Last Activity"
-  - `--show-both-timestamps`: Show both "Last Activity" and "Registry Updated"
-  - `--owner-activity` or `-o`: Show "Owner Activity" instead (owner's last push)
+  The only network access is a single read of the registry file itself
+  (Contents API via `GitHubAPI.get_repositories_json/0`) — the tool reading
+  its own remote write target, which is not per-repository monitoring.
   """
 
-  alias RegistryManager.{Cache, Config, GitHubAPI, TimestampManager}
   alias RegistryManager.CLI.Spec
+  alias RegistryManager.GitHubAPI
+  alias RegistryManager.TimestampManager
   alias ToolKit.Output.Table
   alias ToolKit.Output.TextWidth
-
-  require Logger
 
   @doc """
   Runs the list command with given arguments and options.
 
   ## Options
-  - `long` (boolean): Show detailed table format (default: Last Activity is displayed)
+  - `long` (boolean): Show the registry detail table (type / GitHub user /
+    protection[recorded] / registry updated)
   - `type` (string): Filter by repository type
   - `format` (string): Output format (table, csv, json)
-  - `activity` (boolean): Explicitly request last activity information (default in long mode)
-  - `owner_activity` (boolean): Show owner activity instead of last activity
-  - `show_registry_updated` (boolean): Show registry updated instead of last activity (Issue #107)
-  - `show_both_timestamps` (boolean): Show both last activity and registry updated (Issue #107)
   - `show_type` (boolean): Show repository type column
-  - `show_protection` (boolean): Show protection status column
+  - `show_protection` (boolean): Show recorded protection status column
+  - `show_registry_updated` (boolean): Show registry updated column
   - `show_student_id` (boolean): Show student ID column
   - `no_names` (boolean): Hide student names
-  - `sort` (string): Sort key, "name" (default) or "time" (CLI の -t は "time" の短縮)
+  - `sort` (string): Sort key, "name" (default) or "time" (registry-updated time)
   - `reverse` (boolean): Reverse sort order
-  - `no_cache` (boolean): Bypass cache for activity information
 
   ## Test Parameters (for testing only)
   - `repositories` (map): Override repository data
   - `csv_data` (list): Override CSV student data
-  - `activity_data` (map): Override activity data
-  - `use_cache` (boolean): Force cache usage setting
   """
   @spec run(list(), keyword(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def run(_args, opts, test_params \\ []) do
@@ -64,7 +54,7 @@ defmodule RegistryManager.Commands.List do
          {:ok, enriched_repo_list} <-
            enrich_repositories(filtered_repos, validated_opts, test_params),
          {:ok, sorted_repo_list} <- sort_repositories(enriched_repo_list, validated_opts),
-         {:ok, output} <- format_output(sorted_repo_list, validated_opts, test_params) do
+         {:ok, output} <- format_output(sorted_repo_list, validated_opts) do
       {:ok, output}
     end
   end
@@ -133,28 +123,13 @@ defmodule RegistryManager.Commands.List do
     {:ok, filtered}
   end
 
+  # ソートは registry のデータだけで完結する:
+  # デフォルトは名前順、--sort time（短縮: -t）は registry_updated_at 順。
   defp sort_repositories(repositories, opts) do
     sort_by_time = Keyword.get(opts, :sort) == "time"
-    activity = Keyword.get(opts, :activity, false)
-    owner_activity = Keyword.get(opts, :owner_activity, false)
-    show_registry_updated = Keyword.get(opts, :show_registry_updated, false)
     reverse = Keyword.get(opts, :reverse, false)
 
-    # ソート種別を決定（Issue #107: デフォルトはLast Activityでソート）
-    # --sort time（短縮: -t）が指定された場合のみ時刻ソートを有効化
-    sort_type =
-      cond do
-        # -t --owner-activity
-        sort_by_time and owner_activity -> :owner_activity_time
-        # -t --show-registry-updated
-        sort_by_time and show_registry_updated -> :registry_time
-        # -t --activity（明示的）
-        sort_by_time and activity -> :activity_time
-        # -t のみ（デフォルト: Last Activityでソート）
-        sort_by_time -> :activity_time
-        # デフォルト（名前順）
-        true -> :alphabetical
-      end
+    sort_type = if sort_by_time, do: :registry_time, else: :alphabetical
 
     sorted_list =
       repositories
@@ -171,24 +146,6 @@ defmodule RegistryManager.Commands.List do
       time2 = get_sort_timestamp(data2)
 
       compare_timestamps_for_sorting(time1, time2, name1, name2)
-    end)
-  end
-
-  defp apply_sorting(repos, :activity_time) do
-    Enum.sort(repos, fn {name1, data1}, {name2, data2} ->
-      activity1 = Map.get(data1, "last_activity")
-      activity2 = Map.get(data2, "last_activity")
-
-      compare_timestamps_for_sorting(activity1, activity2, name1, name2)
-    end)
-  end
-
-  defp apply_sorting(repos, :owner_activity_time) do
-    Enum.sort(repos, fn {name1, data1}, {name2, data2} ->
-      owner_activity1 = Map.get(data1, "owner_last_activity")
-      owner_activity2 = Map.get(data2, "owner_last_activity")
-
-      compare_timestamps_for_sorting(owner_activity1, owner_activity2, name1, name2)
     end)
   end
 
@@ -242,67 +199,29 @@ defmodule RegistryManager.Commands.List do
   end
 
   defp enrich_repositories(repo_list, opts, test_params) do
-    need_csv = need_student_data?(opts)
-    need_activity = need_activity_data?(opts)
-
     csv_data =
-      if need_csv do
+      if need_student_data?(opts) do
         get_csv_data(test_params)
       else
         []
       end
 
-    activity_data =
-      if need_activity do
-        get_activity_data(repo_list, opts, test_params)
-      else
-        %{}
-      end
-
     enriched =
       Enum.map(repo_list, fn {repo_name, repo_data} ->
-        enriched_data =
-          repo_data
-          |> add_student_info(csv_data)
-          |> add_activity_info(repo_name, activity_data)
-
-        {repo_name, enriched_data}
+        {repo_name, add_student_info(repo_data, csv_data)}
       end)
 
     {:ok, enriched}
   end
 
+  # 学生名は detailed 表示（long / csv / json）でのみ必要。
+  # per-repo の GitHub 取得は行わず、CSV 名簿の突合のみ。
   defp need_student_data?(opts) do
-    # long形式または活動情報表示時に学生データが必要
-    long_mode =
+    detailed =
       Keyword.get(opts, :long, false) ||
-        Keyword.get(opts, :activity, false) ||
-        Keyword.get(opts, :owner_activity, false)
+        Keyword.get(opts, :format, "table") in ["csv", "json"]
 
-    long_mode and not Keyword.get(opts, :no_names, false)
-  end
-
-  defp need_activity_data?(opts) do
-    # Issue #107: デフォルトでLast Activityを表示するため、
-    # --show-registry-updatedが指定されていない限り活動データを取得する
-    show_registry_updated = Keyword.get(opts, :show_registry_updated, false)
-    show_both = Keyword.get(opts, :show_both_timestamps, false)
-    activity = Keyword.get(opts, :activity, false)
-    owner_activity = Keyword.get(opts, :owner_activity, false)
-    long = Keyword.get(opts, :long, false)
-
-    # long形式の場合の活動データ取得判断
-    cond do
-      # --show-registry-updated のみの場合は活動データ不要
-      show_registry_updated and not show_both -> false
-      # 明示的に活動情報が指定された場合
-      activity or owner_activity -> true
-      # --show-both-timestamps の場合は活動データが必要
-      show_both -> true
-      # long形式のデフォルトは活動データを取得
-      long -> true
-      true -> false
-    end
+    detailed and not Keyword.get(opts, :no_names, false)
   end
 
   defp get_csv_data(test_params) do
@@ -317,18 +236,6 @@ defmodule RegistryManager.Commands.List do
       test_csv_data ->
         # テスト用データを使用
         test_csv_data
-    end
-  end
-
-  defp get_activity_data(repositories, opts, test_params) do
-    case Keyword.get(test_params, :activity_data) do
-      nil ->
-        # 実際のGitHub API呼び出し
-        use_cache = not Keyword.get(opts, :no_cache, false)
-        fetch_activity_data(repositories, use_cache)
-
-      test_activity ->
-        test_activity
     end
   end
 
@@ -371,21 +278,9 @@ defmodule RegistryManager.Commands.List do
       username == csv_github_username
   end
 
-  defp add_activity_info(repo_data, repo_name, activity_data) do
-    case Map.get(activity_data, repo_name) do
-      nil -> repo_data
-      activity -> Map.merge(repo_data, activity)
-    end
-  end
-
-  defp format_output(repo_list, opts, _test_params) do
+  defp format_output(repo_list, opts) do
     format = Keyword.get(opts, :format, "table")
-
-    # -a (activity) や -o (owner_activity) オプション使用時は自動的にlong形式を有効化
-    long_mode =
-      Keyword.get(opts, :long, false) ||
-        Keyword.get(opts, :activity, false) ||
-        Keyword.get(opts, :owner_activity, false)
+    long_mode = Keyword.get(opts, :long, false)
 
     case {format, long_mode} do
       {"table", false} -> format_basic_list(repo_list)
@@ -417,63 +312,32 @@ defmodule RegistryManager.Commands.List do
     {:ok, Table.render(header_list, data_rows)}
   end
 
-  # Issue #107: Default timestamp display changed to Last Activity
-  # activity系オプションの状態に基づいて、どのタイムスタンプを表示するかを決定
-  # 新しい優先順位:
-  # 1. --show-both-timestamps が指定された場合: Last Activity + Registry Updated
-  # 2. --show-registry-updated が指定された場合: Registry Updated のみ
-  # 3. --owner-activity が指定された場合: Owner Activity のみ
-  # 4. デフォルト: Last Activity のみ
-  @spec determine_timestamp_visibility(keyword()) ::
-          {false, boolean(), boolean()} | {true, false, boolean()}
-  defp determine_timestamp_visibility(opts) do
-    show_registry_updated = Keyword.get(opts, :show_registry_updated, false)
-    show_both = Keyword.get(opts, :show_both_timestamps, false)
-    owner_activity = Keyword.get(opts, :owner_activity, false)
+  # long 指定時はレジストリ詳細列（type / protection[recorded] / registry updated）を
+  # まとめて表示する。個別の --show-* フラグでも同じ列を単独で有効化できる。
+  # 表示する列はすべて registry に保存された値で、GitHub は叩かない。
+  defp column_visibility(opts) do
+    long = Keyword.get(opts, :long, false)
 
-    # activity オプションは明示的に指定された場合のみtrueとする（後方互換性のため）
-    activity = Keyword.get(opts, :activity, false)
-
-    cond do
-      # --show-both-timestamps が最優先（Last Activity + Registry Updated）
-      show_both ->
-        {true, false, true}
-
-      # --show-registry-updated が指定された場合（Registry Updated のみ）
-      show_registry_updated ->
-        {false, false, true}
-
-      # --owner-activity が指定された場合（Owner Activity のみ）
-      owner_activity ->
-        {false, true, false}
-
-      # --activity が明示的に指定された場合（Last Activity のみ）
-      activity ->
-        {true, false, false}
-
-      # デフォルト: Last Activity のみ
-      true ->
-        {true, false, false}
-    end
+    %{
+      student_id: Keyword.get(opts, :show_student_id, false),
+      names: not Keyword.get(opts, :no_names, false),
+      type: long or Keyword.get(opts, :show_type, false),
+      protection: long or Keyword.get(opts, :show_protection, false),
+      registry_updated: long or Keyword.get(opts, :show_registry_updated, false)
+    }
   end
 
   # 新しい関数: ヘッダーのリストを作成
   defp build_header_list(opts) do
-    base_headers = ["Repository"]
+    vis = column_visibility(opts)
 
-    # Issue #92: Single timestamp display rule
-    {show_last_activity, show_owner_activity, show_registry_updated} =
-      determine_timestamp_visibility(opts)
-
-    base_headers
-    |> add_conditional_header("Student ID", Keyword.get(opts, :show_student_id, false))
-    |> add_conditional_header("Name", not Keyword.get(opts, :no_names, false))
+    ["Repository"]
+    |> add_conditional_header("Student ID", vis.student_id)
+    |> add_conditional_header("Name", vis.names)
     |> add_conditional_header("GitHub User", true)
-    |> add_conditional_header("Type", Keyword.get(opts, :show_type, false))
-    |> add_conditional_header("Protection", Keyword.get(opts, :show_protection, false))
-    |> add_conditional_header("Last Activity", show_last_activity)
-    |> add_conditional_header("Owner Activity", show_owner_activity)
-    |> add_conditional_header("Registry Updated", show_registry_updated)
+    |> add_conditional_header("Type", vis.type)
+    |> add_conditional_header("Protection (recorded)", vis.protection)
+    |> add_conditional_header("Registry Updated", vis.registry_updated)
   end
 
   defp add_conditional_header(headers, header_name, condition) do
@@ -486,39 +350,15 @@ defmodule RegistryManager.Commands.List do
 
   # 新しい関数: データ行を列のリストとして作成
   defp build_column_data(repo_name, repo_data, opts) do
-    base_columns = [repo_name]
+    vis = column_visibility(opts)
 
-    # Issue #92: Single timestamp display rule
-    {show_last_activity, show_owner_activity, show_registry_updated} =
-      determine_timestamp_visibility(opts)
-
-    base_columns
-    |> add_conditional_column(
-      Map.get(repo_data, "student_id", "N/A"),
-      Keyword.get(opts, :show_student_id, false)
-    )
-    |> add_conditional_column(
-      Map.get(repo_data, "student_name", "N/A"),
-      not Keyword.get(opts, :no_names, false)
-    )
+    [repo_name]
+    |> add_conditional_column(Map.get(repo_data, "student_id", "N/A"), vis.student_id)
+    |> add_conditional_column(Map.get(repo_data, "student_name", "N/A"), vis.names)
     |> add_conditional_column(format_github_username(repo_data), true)
-    |> add_conditional_column(
-      Map.get(repo_data, "repository_type", "N/A"),
-      Keyword.get(opts, :show_type, false)
-    )
-    |> add_conditional_column(
-      format_protection_status(repo_data),
-      Keyword.get(opts, :show_protection, false)
-    )
-    |> add_conditional_column(
-      format_activity_time(repo_data, "last_activity"),
-      show_last_activity
-    )
-    |> add_conditional_column(
-      format_activity_time(repo_data, "owner_last_activity"),
-      show_owner_activity
-    )
-    |> add_conditional_column(format_registry_updated_time(repo_data), show_registry_updated)
+    |> add_conditional_column(Map.get(repo_data, "repository_type", "N/A"), vis.type)
+    |> add_conditional_column(format_protection_status(repo_data), vis.protection)
+    |> add_conditional_column(format_registry_updated_time(repo_data), vis.registry_updated)
   end
 
   defp add_conditional_column(columns, column_value, condition) do
@@ -541,19 +381,6 @@ defmodule RegistryManager.Commands.List do
       "protected" -> "protected"
       "not_protected" -> "not_protected"
       _ -> "unknown"
-    end
-  end
-
-  defp format_activity_time(repo_data, field) do
-    case Map.get(repo_data, field) do
-      nil ->
-        "N/A"
-
-      timestamp ->
-        case TimestampManager.parse_github_time(timestamp) do
-          {:ok, datetime} -> TimestampManager.format_for_display(datetime)
-          {:error, _} -> "Invalid"
-        end
     end
   end
 
@@ -591,58 +418,28 @@ defmodule RegistryManager.Commands.List do
   end
 
   defp build_csv_headers(opts) do
-    base_headers = ["repository"]
+    vis = column_visibility(opts)
 
-    # Issue #92: Single timestamp display rule
-    {show_last_activity, show_owner_activity, show_registry_updated} =
-      determine_timestamp_visibility(opts)
-
-    base_headers
-    |> add_conditional_header("student_id", Keyword.get(opts, :show_student_id, false))
-    |> add_conditional_header("name", not Keyword.get(opts, :no_names, false))
+    ["repository"]
+    |> add_conditional_header("student_id", vis.student_id)
+    |> add_conditional_header("name", vis.names)
     |> add_conditional_header("github_username", true)
-    |> add_conditional_header("type", Keyword.get(opts, :show_type, false))
-    |> add_conditional_header("protection_status", Keyword.get(opts, :show_protection, false))
-    |> add_conditional_header("last_activity", show_last_activity)
-    |> add_conditional_header("owner_activity", show_owner_activity)
-    |> add_conditional_header("registry_updated_at", show_registry_updated)
+    |> add_conditional_header("type", vis.type)
+    |> add_conditional_header("protection_status", vis.protection)
+    |> add_conditional_header("registry_updated_at", vis.registry_updated)
     |> Enum.join(",")
   end
 
   defp build_csv_row(repo_name, repo_data, opts) do
-    base_values = [repo_name]
+    vis = column_visibility(opts)
 
-    # Issue #92: Single timestamp display rule
-    {show_last_activity, show_owner_activity, show_registry_updated} =
-      determine_timestamp_visibility(opts)
-
-    base_values
-    |> add_conditional_column(
-      Map.get(repo_data, "student_id", ""),
-      Keyword.get(opts, :show_student_id, false)
-    )
-    |> add_conditional_column(
-      Map.get(repo_data, "student_name", ""),
-      not Keyword.get(opts, :no_names, false)
-    )
+    [repo_name]
+    |> add_conditional_column(Map.get(repo_data, "student_id", ""), vis.student_id)
+    |> add_conditional_column(Map.get(repo_data, "student_name", ""), vis.names)
     |> add_conditional_column(format_github_username(repo_data), true)
-    |> add_conditional_column(
-      Map.get(repo_data, "repository_type", ""),
-      Keyword.get(opts, :show_type, false)
-    )
-    |> add_conditional_column(
-      format_protection_status(repo_data),
-      Keyword.get(opts, :show_protection, false)
-    )
-    |> add_conditional_column(
-      format_activity_time(repo_data, "last_activity"),
-      show_last_activity
-    )
-    |> add_conditional_column(
-      format_activity_time(repo_data, "owner_last_activity"),
-      show_owner_activity
-    )
-    |> add_conditional_column(format_registry_updated_time(repo_data), show_registry_updated)
+    |> add_conditional_column(Map.get(repo_data, "repository_type", ""), vis.type)
+    |> add_conditional_column(format_protection_status(repo_data), vis.protection)
+    |> add_conditional_column(format_registry_updated_time(repo_data), vis.registry_updated)
     |> Enum.map(&escape_csv_value/1)
     |> Enum.join(",")
   end
@@ -668,52 +465,26 @@ defmodule RegistryManager.Commands.List do
   end
 
   defp build_json_object(repo_name, repo_data, opts) do
-    base_object = %{"repository" => repo_name}
+    vis = column_visibility(opts)
 
-    # Issue #92: Single timestamp display rule
-    {show_last_activity, show_owner_activity, show_registry_updated} =
-      determine_timestamp_visibility(opts)
-
-    base_object
-    |> add_conditional_json_field(
-      "student_id",
-      Map.get(repo_data, "student_id"),
-      Keyword.get(opts, :show_student_id, false)
-    )
-    |> add_conditional_json_field(
-      "name",
-      Map.get(repo_data, "student_name"),
-      not Keyword.get(opts, :no_names, false)
-    )
+    %{"repository" => repo_name}
+    |> add_conditional_json_field("student_id", Map.get(repo_data, "student_id"), vis.student_id)
+    |> add_conditional_json_field("name", Map.get(repo_data, "student_name"), vis.names)
     |> add_conditional_json_field(
       "github_username",
       get_github_usernames_for_json(repo_data),
       true
     )
-    |> add_conditional_json_field(
-      "type",
-      Map.get(repo_data, "repository_type"),
-      Keyword.get(opts, :show_type, false)
-    )
+    |> add_conditional_json_field("type", Map.get(repo_data, "repository_type"), vis.type)
     |> add_conditional_json_field(
       "protection_status",
       Map.get(repo_data, "protection_status"),
-      Keyword.get(opts, :show_protection, false)
-    )
-    |> add_conditional_json_field(
-      "last_activity",
-      format_activity_time(repo_data, "last_activity"),
-      show_last_activity
-    )
-    |> add_conditional_json_field(
-      "owner_activity",
-      format_activity_time(repo_data, "owner_last_activity"),
-      show_owner_activity
+      vis.protection
     )
     |> add_conditional_json_field(
       "registry_updated_at",
       format_registry_updated_time(repo_data),
-      show_registry_updated
+      vis.registry_updated
     )
   end
 
@@ -725,138 +496,12 @@ defmodule RegistryManager.Commands.List do
     end
   end
 
-  @spec fetch_activity_data(list(), boolean()) :: map()
-  defp fetch_activity_data(repo_list, use_cache) do
-    config = Config.load_config()
-
-    # リポジトリ名のリストを作成
-    repo_names = Enum.map(repo_list, fn {repo_name, _data} -> repo_name end)
-
-    # 並列実行で各リポジトリの活動情報を取得
-    results =
-      repo_names
-      |> Task.async_stream(
-        fn repo_name ->
-          fetch_single_repository_activity(repo_name, use_cache, config)
-        end,
-        max_concurrency: config.api.max_concurrent,
-        timeout: config.api.timeout_seconds * 1000,
-        ordered: true,
-        on_timeout: :kill_task
-      )
-
-    # 結果とリポジトリ名をペアにして処理
-    results
-    |> Enum.zip(repo_names)
-    |> Enum.reduce(%{}, fn
-      {{:ok, {:ok, activity_data}}, repo_name}, acc ->
-        Map.put(acc, repo_name, activity_data)
-
-      {{:ok, {:error, _reason}}, repo_name}, acc ->
-        # エラーの場合は空の活動データを設定
-        Map.put(acc, repo_name, %{
-          "last_activity" => nil,
-          "owner_last_activity" => nil
-        })
-
-      {{:exit, _reason}, repo_name}, acc ->
-        # タイムアウトやクラッシュの場合も空の活動データを設定
-        Map.put(acc, repo_name, %{
-          "last_activity" => nil,
-          "owner_last_activity" => nil
-        })
-
-      # その他の予期しないケース
-      {unexpected_result, repo_name}, acc ->
-        Logger.warning(
-          "Unexpected result in parallel activity fetch for #{repo_name}: #{inspect(unexpected_result)}"
-        )
-
-        Map.put(acc, repo_name, %{
-          "last_activity" => nil,
-          "owner_last_activity" => nil
-        })
-    end)
-  end
-
-  @spec fetch_single_repository_activity(String.t(), boolean(), Config.t()) ::
-          {:ok, map()} | {:error, String.t()}
-  defp fetch_single_repository_activity(repo_name, use_cache, config) do
-    if use_cache do
-      case Cache.get(repo_name) do
-        {:ok, cached_data} ->
-          {:ok, cached_data}
-
-        {:error, :cache_miss} ->
-          fetch_and_cache_repository_activity(repo_name, config)
-
-        {:error, :cache_expired} ->
-          handle_cache_refresh(repo_name, config)
-
-        {:error, reason} ->
-          {:error, "Cache error: #{reason}"}
-      end
-    else
-      # --no-cache オプション使用時も取得した最新データをキャッシュに保存
-      fetch_and_cache_repository_activity(repo_name, config)
-    end
-  end
-
-  defp handle_cache_refresh(repo_name, config) do
-    case fetch_and_cache_repository_activity(repo_name, config) do
-      {:ok, activity_data} ->
-        {:ok, activity_data}
-
-      {:error, reason} ->
-        Logger.warning("Failed to refresh expired cache for #{repo_name}: #{reason}")
-        {:error, "Failed to refresh activity data: #{reason}"}
-    end
-  end
-
-  defp fetch_and_cache_repository_activity(repo_name, config) do
-    case fetch_repository_activity_from_api(repo_name, config) do
-      {:ok, activity_data} ->
-        # キャッシュに保存
-        :ok = Cache.put(repo_name, activity_data)
-        {:ok, activity_data}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp fetch_repository_activity_from_api(repo_name, _config) do
-    # GitHub API から活動情報を取得
-    case GitHubAPI.get_repository_activity(repo_name) do
-      {:ok, general_activity} ->
-        # 所有者の活動情報も取得
-        case GitHubAPI.get_repository_activity(repo_name, owner_only: true) do
-          {:ok, owner_activity} ->
-            {:ok,
-             %{
-               "last_activity" => general_activity,
-               "owner_last_activity" => owner_activity
-             }}
-
-          {:error, _} ->
-            # 所有者の活動情報取得に失敗した場合は一般的な活動情報のみ
-            {:ok,
-             %{
-               "last_activity" => general_activity,
-               "owner_last_activity" => nil
-             }}
-        end
-
-      {:error, reason} ->
-        {:error, "Failed to fetch repository activity: #{reason}"}
-    end
-  end
-
   @spec get_repositories(keyword()) :: {:ok, map()} | {:error, String.t()}
   defp get_repositories(test_params) do
     case Keyword.get(test_params, :repositories) do
       nil ->
-        # 実際のGitHub APIから取得
+        # レジストリ本体（registry.json）を Contents API で 1 回だけ取得する。
+        # これは書き手が自分の書き込み先を読む動作で、per-repo 監視ではない。
         case GitHubAPI.get_repositories_json() do
           {:ok, {data, _sha}} -> {:ok, data}
           {:error, reason} -> {:error, "Failed to fetch repositories: #{reason}"}

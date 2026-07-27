@@ -22,8 +22,6 @@ defmodule RegistryManager.CLI.Spec do
     "other"
   ]
   @output_formats ["table", "csv", "json"]
-  @pr_states ["open", "closed", "all"]
-  @pr_sort_keys ["repository", "updated", "created"]
   @list_sort_keys ["name", "time"]
 
   @doc "リポジトリタイプの正準リスト（--type の enum）"
@@ -31,12 +29,6 @@ defmodule RegistryManager.CLI.Spec do
 
   @doc "出力形式の正準リスト（--format の enum）"
   def output_formats, do: @output_formats
-
-  @doc "PR 状態の正準リスト（--state の enum）"
-  def pr_states, do: @pr_states
-
-  @doc "PR ソートキーの正準リスト（pr-status の --sort の enum）"
-  def pr_sort_keys, do: @pr_sort_keys
 
   @doc "list のソートキーの正準リスト（list の --sort の enum）"
   def list_sort_keys, do: @list_sort_keys
@@ -66,21 +58,12 @@ defmodule RegistryManager.CLI.Spec do
     show_type: %{type: :boolean, alias: nil, values: nil, doc: "リポジトリタイプ列を表示"},
     show_protection: %{type: :boolean, alias: :p, values: nil, doc: "保護状態列を表示"},
     no_names: %{type: :boolean, alias: nil, values: nil, doc: "学生名を非表示"},
-    activity: %{type: :boolean, alias: :a, values: nil, doc: "リポジトリの最終活動時刻を表示"},
-    owner_activity: %{type: :boolean, alias: :o, values: nil, doc: "オーナーの活動時刻を表示"},
     show_registry_updated: %{
       type: :boolean,
       alias: nil,
       values: nil,
       doc: "registry_updated_at 列を表示"
     },
-    show_both_timestamps: %{
-      type: :boolean,
-      alias: nil,
-      values: nil,
-      doc: "リポジトリ/レジストリ両方の時刻列を表示"
-    },
-    no_cache: %{type: :boolean, alias: nil, values: nil, doc: "キャッシュを使用しない"},
     format: %{type: :string, alias: nil, values: @output_formats, doc: "出力形式"},
     type: %{type: :string, alias: :T, values: @repo_types, doc: "リポジトリタイプでフィルタ"},
     # alias: :t が -t を受理させる（OptionParser は aliases 経由でのみ 1 文字形を解釈する）。
@@ -91,14 +74,12 @@ defmodule RegistryManager.CLI.Spec do
     add_owner: %{type: :string, alias: nil, values: nil, doc: "オーナーを追加"},
     remove_owner: %{type: :string, alias: nil, values: nil, doc: "オーナーを削除"},
     set_owners: %{type: :string, alias: nil, values: nil, doc: "オーナーを設定（カンマ区切り）"},
-    state: %{type: :string, alias: nil, values: @pr_states, doc: "PR 状態でフィルタ"},
-    review_requested: %{
-      type: :boolean,
+    sort: %{
+      type: :string,
       alias: nil,
-      values: nil,
-      doc: "レビューリクエスト保留中の PR のみ表示"
+      values: @list_sort_keys,
+      doc: "ソートキー（name / time）"
     },
-    sort: %{type: :string, alias: nil, values: @pr_sort_keys, doc: "ソートキー"},
     all: %{type: :boolean, alias: nil, values: nil, doc: "全リポジトリを対象にする"},
     from_template: %{
       type: :boolean,
@@ -191,20 +172,17 @@ defmodule RegistryManager.CLI.Spec do
       name: "list",
       aliases: ["ls"],
       usage: ["list [filter]"],
-      summary: "リポジトリ一覧・状況を表示",
+      summary: "レジストリの登録内容を表示（GitHub は叩かず registry.json の保存値のみ）",
       options: [
         :long,
         :show_type,
         :show_protection,
         :no_names,
-        :activity,
-        :owner_activity,
         :show_registry_updated,
-        :show_both_timestamps,
-        :no_cache,
         :format,
         :type,
-        {:sort, %{values: @list_sort_keys, doc: "ソートキー（デフォルト: name）"}},
+        {:sort,
+         %{values: @list_sort_keys, doc: "ソートキー（name / registry_updated 時刻の time。デフォルト: name）"}},
         :t,
         :reverse,
         :show_student_id
@@ -248,14 +226,6 @@ defmodule RegistryManager.CLI.Spec do
       summary: "リポジトリの GitHub オーナーを編集",
       options: [:add_owner, :remove_owner, :set_owners],
       examples: ["edit k21rs001-sotsuron --add-owner mentor-user"]
-    },
-    %{
-      name: "pr-status",
-      aliases: [],
-      usage: ["pr-status [filter]"],
-      summary: "各リポジトリの Pull Request 状態を表示",
-      options: [:format, :type, :state, :review_requested, :sort, :reverse, :no_cache],
-      examples: ["pr-status", "pr-status --review-requested", "pr-status --sort updated -r"]
     },
     %{
       name: "propagate-workflow",
