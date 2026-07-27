@@ -172,7 +172,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 レジストリの登録内容を表示します。**GitHub は叩かず、registry.json の保存値のみ**を表示するレジストリビューです（「登録できたか」を確認するための書き手向けコマンド）。リポジトリの活動時刻や PR 状態など GitHub の live 監視は thesis-monitor の役割です（後述）。
 
-archive 済みのリポジトリ（`archived_at` を持つエントリ）は **既定では表示されません**（現役のみ）。archive 済みも含めて全件を表示するには `-a` / `--show-archived` を付けます（thesis-monitor status と同じ挙動）。
+archive 済みのリポジトリ（`archived_at` を持つエントリ）は **既定では表示されません**（現役のみ）。archive 済みも含めて全件を表示するには `-a` / `--show-archived` を付けます（thesis-monitor list と同じ挙動）。
 
 ```bash
 ./registry-manager list [TYPE] [OPTIONS]
@@ -216,7 +216,7 @@ archive 済みのリポジトリ（`archived_at` を持つエントリ）は **�
 ```
 
 > リポジトリの最終活動時刻・PR 状態・オーナーの活動といった GitHub の live 情報は、
-> registry-manager では扱いません。`thesis-monitor status` / `thesis-monitor activity` /
+> registry-manager では扱いません。`thesis-monitor list` / `thesis-monitor activity` /
 > `thesis-monitor pr-stats` を使ってください（見る=thesis-monitor、書く=registry-manager）。
 
 ### add コマンド
@@ -502,7 +502,7 @@ GitHub の live なアクティビティ監視は thesis-monitor の役割です
 echo "=== 最近のアクティビティ ==="
 
 # 最終更新時刻順で状態表示（GitHub の live 情報）
-thesis-monitor status -t
+thesis-monitor list -t
 
 echo
 echo "=== 直近のコミット活動（過去7日） ==="
