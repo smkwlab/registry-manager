@@ -172,6 +172,8 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 レジストリの登録内容を表示します。**GitHub は叩かず、registry.json の保存値のみ**を表示するレジストリビューです（「登録できたか」を確認するための書き手向けコマンド）。リポジトリの活動時刻や PR 状態など GitHub の live 監視は thesis-monitor の役割です（後述）。
 
+archive 済みのリポジトリ（`archived_at` を持つエントリ）は **既定では表示されません**（現役のみ）。archive 済みも含めて全件を表示するには `-a` / `--show-archived` を付けます（thesis-monitor status と同じ挙動）。
+
 ```bash
 ./registry-manager list [TYPE] [OPTIONS]
 ```
@@ -191,6 +193,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 | `--show-student-id` | `-s` | 学生IDを表示 |
 | `--no-names` | | 学生名を非表示 |
 | `--show-registry-updated` | | registry_updated_at 列を表示 |
+| `--show-archived` | `-a` | archive 済みリポジトリも表示（既定は現役のみ） |
 | `--sort name\|time` | | ソートキー（`time` は registry_updated_at 時刻。デフォルト: name）。`-t` は `--sort time` の短縮 |
 | `--reverse` | `-r` | 逆順でソート |
 
@@ -204,6 +207,9 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 # registry 更新時刻の新しい順で表示
 ./registry-manager list --sort time -r
+
+# archive 済みも含めて全件表示（既定は現役のみ）
+./registry-manager list -a
 
 # 保護状態（保存値）付きでJSON出力
 ./registry-manager list --format json --show-protection

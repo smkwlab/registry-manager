@@ -12,6 +12,8 @@ defmodule RegistryManager.Commands.List do
   - Long mode (-l/--long): Registry detail table
     (type / GitHub user / protection[recorded] / registry updated)
   - Filtering: By repository type (--type)
+  - Archived: archived entries (with `archived_at`) are hidden by default;
+    `-a`/`--show-archived` includes them (matches thesis-monitor status)
   - Sorting: Alphabetical (default) or by registry-updated time (--sort time / -t)
   - Output formats: table (default), csv, json
 
@@ -38,6 +40,7 @@ defmodule RegistryManager.Commands.List do
   - `show_protection` (boolean): Show recorded protection status column
   - `show_registry_updated` (boolean): Show registry updated column
   - `show_student_id` (boolean): Show student ID column
+  - `show_archived` (boolean): Include archived entries (default: active only)
   - `no_names` (boolean): Hide student names
   - `sort` (string): Sort key, "name" (default) or "time" (registry-updated time)
   - `reverse` (boolean): Reverse sort order
@@ -50,7 +53,8 @@ defmodule RegistryManager.Commands.List do
   def run(_args, opts, test_params \\ []) do
     with {:ok, validated_opts} <- validate_options(opts),
          {:ok, repositories} <- get_repositories(test_params),
-         {:ok, filtered_repos} <- filter_repositories(repositories, validated_opts),
+         {:ok, active_repos} <- reject_archived(repositories, validated_opts),
+         {:ok, filtered_repos} <- filter_repositories(active_repos, validated_opts),
          {:ok, enriched_repo_list} <-
            enrich_repositories(filtered_repos, validated_opts, test_params),
          {:ok, sorted_repo_list} <- sort_repositories(enriched_repo_list, validated_opts),
@@ -88,6 +92,29 @@ defmodule RegistryManager.Commands.List do
       :ok
     else
       {:error, "Invalid type: #{type}. Valid types: #{Enum.join(Spec.repo_types(), ", ")}"}
+    end
+  end
+
+  # archive 済み（archived_at を持つ）エントリは既定で除外し、現役のみを表示する。
+  # --show-archived（-a）指定時は従来どおり全件を対象にする。thesis-monitor の
+  # status と挙動を揃えており、archive 済み判定は archived_at の有無で行う。
+  defp reject_archived(repositories, opts) do
+    if Keyword.get(opts, :show_archived, false) do
+      {:ok, repositories}
+    else
+      active =
+        repositories
+        |> Enum.reject(fn {_repo_name, repo_data} -> archived?(repo_data) end)
+        |> Enum.into(%{})
+
+      {:ok, active}
+    end
+  end
+
+  defp archived?(repo_data) do
+    case Map.get(repo_data, "archived_at") do
+      at when is_binary(at) and at != "" -> true
+      _ -> false
     end
   end
 
