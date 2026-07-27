@@ -170,7 +170,7 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 ### list コマンド
 
-リポジトリ一覧を表示します。
+レジストリの登録内容を表示します。**GitHub は叩かず、registry.json の保存値のみ**を表示するレジストリビューです（「登録できたか」を確認するための書き手向けコマンド）。リポジトリの活動時刻や PR 状態など GitHub の live 監視は thesis-monitor の役割です（後述）。
 
 ```bash
 ./registry-manager list [TYPE] [OPTIONS]
@@ -183,19 +183,15 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 
 | オプション | 短縮形 | 説明 |
 |------------|--------|------|
-| `--long` | `-l` | 詳細情報を表示 |
+| `--long` | `-l` | 詳細テーブル表示（タイプ / GitHub ユーザー / 保護状態 / registry 更新時刻。いずれも registry.json の保存値） |
 | `--format table\|csv\|json` | | 出力形式 |
 | `--type TYPE` | `-T` | リポジトリタイプでフィルター |
 | `--show-type` | | タイプ情報を表示 |
-| `--show-protection` | `-p` | 保護状態を表示 |
+| `--show-protection` | `-p` | 保護状態を表示（registry の `protection_status` 保存値。live なブランチ保護ではない） |
 | `--show-student-id` | `-s` | 学生IDを表示 |
 | `--no-names` | | 学生名を非表示 |
-| `--activity` | `-a` | リポジトリの最終活動時刻を表示 |
-| `--owner-activity` | `-o` | オーナーの活動時刻を表示 |
 | `--show-registry-updated` | | registry_updated_at 列を表示 |
-| `--show-both-timestamps` | | リポジトリ/レジストリ両方の時刻列を表示 |
-| `--no-cache` | | キャッシュを使用しない |
-| `--sort name\|time` | | ソートキー（デフォルト: name）。`-t` は `--sort time` の短縮 |
+| `--sort name\|time` | | ソートキー（`time` は registry_updated_at 時刻。デフォルト: name）。`-t` は `--sort time` の短縮 |
 | `--reverse` | `-r` | 逆順でソート |
 
 **使用例:**
@@ -206,12 +202,16 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 # CSV形式で全データ出力
 ./registry-manager list --format csv --long
 
-# 時刻順（新しい順）で逆順表示
+# registry 更新時刻の新しい順で表示
 ./registry-manager list --sort time -r
 
-# 保護状態付きでJSON出力
+# 保護状態（保存値）付きでJSON出力
 ./registry-manager list --format json --show-protection
 ```
+
+> リポジトリの最終活動時刻・PR 状態・オーナーの活動といった GitHub の live 情報は、
+> registry-manager では扱いません。`thesis-monitor status` / `thesis-monitor activity` /
+> `thesis-monitor pr-stats` を使ってください（見る=thesis-monitor、書く=registry-manager）。
 
 ### add コマンド
 
@@ -351,30 +351,13 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 `review_flow` は必須フィールドで、欠落や boolean 以外の値はエラーとして報告されます。
 廃止フィールド（status / stage / updated_at）が検出された場合は legacy 警告として報告されます。
 
-### pr-status コマンド
+### PR 状態の確認（thesis-monitor へ移管）
 
-各リポジトリの Pull Request 状態を表示します。
+各リポジトリの Pull Request 状態の表示は registry-manager では扱いません（GitHub の live 監視は thesis-monitor の役割）。`thesis-monitor pr-stats` を使ってください。type フィルター・`--state open|closed|all`・`--review-requested`・`--sort repository|updated|created` など同等の機能があります。
 
 ```bash
-./registry-manager pr-status [TYPE] [OPTIONS]
-```
-
-**オプション:**
-
-| オプション | 短縮形 | 説明 |
-|------------|--------|------|
-| `--format table\|csv\|json` | | 出力形式 |
-| `--type TYPE` | `-T` | リポジトリタイプでフィルター |
-| `--state open\|closed\|all` | | PR 状態でフィルター |
-| `--review-requested` | | レビューリクエスト保留中の PR のみ表示 |
-| `--sort repository\|updated\|created` | | ソートキー（デフォルト: repository。--review-requested 時は updated） |
-| `--reverse` | `-r` | 逆順でソート |
-| `--no-cache` | | キャッシュを使用しない |
-
-**使用例:**
-```bash
-./registry-manager pr-status --review-requested
-./registry-manager pr-status --type thesis --sort updated -r
+thesis-monitor pr-stats --review-requested
+thesis-monitor pr-stats --type thesis --sort updated -r
 ```
 
 ### edit コマンド
@@ -502,7 +485,9 @@ done
 echo "バックアップを $BACKUP_DIR に保存しました"
 ```
 
-### 4. GitHubアクティビティ監視
+### 4. GitHubアクティビティ監視（thesis-monitor）
+
+GitHub の live なアクティビティ監視は thesis-monitor の役割です（registry-manager の `list` は registry.json の保存値のみを表示するため、活動時刻は扱いません）。
 
 ```bash
 #!/bin/bash
@@ -510,15 +495,13 @@ echo "バックアップを $BACKUP_DIR に保存しました"
 
 echo "=== 最近のアクティビティ ==="
 
-# 活動情報付きでリスト表示
-./registry-manager list --activity --long --format table
+# 最終更新時刻順で状態表示（GitHub の live 情報）
+thesis-monitor status -t
 
 echo
-echo "=== 非アクティブリポジトリ（要確認） ==="
+echo "=== 直近のコミット活動（過去7日） ==="
 
-# JSONで取得して詳細分析
-./registry-manager list --activity --format json --long | \
-  jq -r '.[] | select(.last_commit_days_ago > 7) | "\(.repo_name): \(.last_commit_days_ago)日前"'
+thesis-monitor activity 7
 ```
 
 ## トラブルシューティング
