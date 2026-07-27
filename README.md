@@ -122,8 +122,10 @@ mix escript.build
 ./registry-manager protect k21rs001-sotsuron
 
 # 一覧表示（フィルタ・出力形式）
+# 既定は現役のみ表示。archive 済みも含めるには -a / --show-archived
 ./registry-manager list --long
 ./registry-manager list --type wr --format csv
+./registry-manager list -a
 
 # データ検証
 ./registry-manager validate

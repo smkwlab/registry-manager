@@ -64,6 +64,12 @@ defmodule RegistryManager.CLI.Spec do
       values: nil,
       doc: "registry_updated_at 列を表示"
     },
+    show_archived: %{
+      type: :boolean,
+      alias: :a,
+      values: nil,
+      doc: "archive 済みリポジトリも一覧に表示（既定は現役のみ）"
+    },
     format: %{type: :string, alias: nil, values: @output_formats, doc: "出力形式"},
     type: %{type: :string, alias: :T, values: @repo_types, doc: "リポジトリタイプでフィルタ"},
     # alias: :t が -t を受理させる（OptionParser は aliases 経由でのみ 1 文字形を解釈する）。
@@ -179,6 +185,7 @@ defmodule RegistryManager.CLI.Spec do
         :show_protection,
         :no_names,
         :show_registry_updated,
+        :show_archived,
         :format,
         :type,
         {:sort,
@@ -192,6 +199,7 @@ defmodule RegistryManager.CLI.Spec do
         "list --long",
         "list --type wr --long",
         "list --sort time -r",
+        "list -a",
         "list --format csv"
       ]
     },

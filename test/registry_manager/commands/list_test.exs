@@ -290,6 +290,79 @@ defmodule RegistryManager.Commands.ListTest do
     end
   end
 
+  describe "run/2 - archived filtering" do
+    @archived_repositories %{
+      "k21rs001-sotsuron" => %{
+        "student_id" => "k21rs001",
+        "repository_type" => "sotsuron",
+        "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
+        "github_username" => "student001",
+        "protection_status" => "protected"
+      },
+      "k18rs099-sotsuron" => %{
+        "student_id" => "k18rs099",
+        "repository_type" => "sotsuron",
+        "registry_updated_at" => "2022-03-01T00:00:00.000000Z",
+        "github_username" => "student099",
+        "protection_status" => "protected",
+        "archived_at" => "2025-03-31T00:00:00.000000Z"
+      }
+    }
+
+    test "hides archived repositories by default" do
+      {:ok, output} = List.run([], [], repositories: @archived_repositories)
+
+      lines = String.split(output, "\n", trim: true)
+      assert lines == ["k21rs001-sotsuron"]
+      refute "k18rs099-sotsuron" in lines
+    end
+
+    test "includes archived repositories with show_archived" do
+      {:ok, output} = List.run([], [show_archived: true], repositories: @archived_repositories)
+
+      lines = String.split(output, "\n", trim: true)
+      assert "k21rs001-sotsuron" in lines
+      assert "k18rs099-sotsuron" in lines
+      assert length(lines) == 2
+    end
+
+    test "treats empty-string archived_at as active" do
+      repositories = %{
+        "active-repo" => %{
+          "student_id" => "k21rs001",
+          "repository_type" => "wr",
+          "github_username" => "student001",
+          "archived_at" => ""
+        }
+      }
+
+      {:ok, output} = List.run([], [], repositories: repositories)
+
+      lines = String.split(output, "\n", trim: true)
+      assert lines == ["active-repo"]
+    end
+
+    test "archived filter applies together with type filter" do
+      {:ok, output} =
+        List.run([], [type: "sotsuron"], repositories: @archived_repositories)
+
+      lines = String.split(output, "\n", trim: true)
+      assert lines == ["k21rs001-sotsuron"]
+    end
+
+    test "show_archived surfaces archived entries in JSON output", %{csv_data: csv_data} do
+      {:ok, output} =
+        List.run([], [format: "json", long: true, show_archived: true],
+          repositories: @archived_repositories,
+          csv_data: csv_data
+        )
+
+      {:ok, parsed} = Jason.decode(output)
+      repos = Enum.map(parsed, & &1["repository"])
+      assert "k18rs099-sotsuron" in repos
+    end
+  end
+
   describe "run/2 - sorting" do
     test "sorts by time with --sort time --show-registry-updated (newest first)", %{
       repositories: repositories
