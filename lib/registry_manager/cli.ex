@@ -11,7 +11,6 @@ defmodule RegistryManager.CLI do
   alias RegistryManager.Commands.Init
   alias RegistryManager.Commands.List
   alias RegistryManager.Commands.PropagateWorkflow
-  alias RegistryManager.Commands.PrStatus
   alias RegistryManager.Commands.Validate
   alias RegistryManager.Config
   alias RegistryManager.Repository
@@ -141,7 +140,6 @@ defmodule RegistryManager.CLI do
       "cache-alias" => &parse_cache_alias/2,
       "infer-student-id" => &parse_infer_student_id_command/2,
       "edit" => &parse_edit_command/2,
-      "pr-status" => &parse_pr_status_command/2,
       "propagate-workflow" => &parse_propagate_workflow_command/2,
       "archive" => &parse_archive_command/2
     }
@@ -229,10 +227,6 @@ defmodule RegistryManager.CLI do
   end
 
   defp parse_edit_command(_, _opts), do: :help
-
-  defp parse_pr_status_command([], opts), do: {:pr_status, nil, opts}
-  defp parse_pr_status_command([filter], opts), do: {:pr_status, filter, opts}
-  defp parse_pr_status_command(_, _opts), do: :help
 
   defp parse_propagate_workflow_command([], opts) do
     if opts[:all] do
@@ -444,23 +438,6 @@ defmodule RegistryManager.CLI do
 
       {:error, reason} ->
         print_output("❌ 編集エラー: #{reason}")
-        exit_with_code(1)
-    end
-  end
-
-  defp process_impl({:pr_status, filter, opts}) do
-    if opts[:verbose], do: print_output("PR状態確認を開始...")
-
-    # フィルターがある場合はオプションに追加
-    opts = if filter, do: Keyword.put(opts, :type, filter), else: opts
-
-    case PrStatus.run([], opts) do
-      {:ok, output} ->
-        print_output(output)
-        exit_with_code(0)
-
-      {:error, reason} ->
-        print_output("❌ PR状態確認エラー: #{reason}")
         exit_with_code(1)
     end
   end

@@ -22,9 +22,8 @@ defmodule RegistryManager.CLI.SpecTest do
       assert :review_flow in Spec.allowed_for("add")
     end
 
-    test "pr states and sort keys are exposed as canonical lists" do
-      assert Spec.pr_states() == ["open", "closed", "all"]
-      assert Spec.pr_sort_keys() == ["repository", "updated", "created"]
+    test "list sort keys are exposed as a canonical list" do
+      assert Spec.list_sort_keys() == ["name", "time"]
     end
 
     test "every CLI dispatch command has a spec entry" do
@@ -88,10 +87,10 @@ defmodule RegistryManager.CLI.SpecTest do
 
     test "command-local options are not allowed elsewhere" do
       refute MapSet.member?(Spec.allowed_for("add"), :format)
-      refute MapSet.member?(Spec.allowed_for("list"), :state)
+      refute MapSet.member?(Spec.allowed_for("list"), :add_owner)
       refute MapSet.member?(Spec.allowed_for("remove"), :force)
       assert MapSet.member?(Spec.allowed_for("list"), :format)
-      assert MapSet.member?(Spec.allowed_for("pr-status"), :state)
+      assert MapSet.member?(Spec.allowed_for("edit"), :add_owner)
     end
 
     test "returns nil for unknown commands" do
@@ -128,9 +127,9 @@ defmodule RegistryManager.CLI.SpecTest do
     end
 
     test "reports all violations at once" do
-      assert {:error, message} = Spec.validate_opts("list", type: "bogus", state: "open")
+      assert {:error, message} = Spec.validate_opts("list", type: "bogus", force: true)
       assert message =~ "--type"
-      assert message =~ "--state"
+      assert message =~ "--force"
     end
 
     test "sort keys are validated per command" do
@@ -138,9 +137,6 @@ defmodule RegistryManager.CLI.SpecTest do
       assert :ok = Spec.validate_opts("list", sort: "name")
       assert {:error, message} = Spec.validate_opts("list", sort: "updated")
       assert message =~ "name, time"
-
-      assert :ok = Spec.validate_opts("pr-status", sort: "updated")
-      assert {:error, _} = Spec.validate_opts("pr-status", sort: "time")
     end
 
     test "unknown command passes through (dispatch handles it)" do
@@ -171,11 +167,10 @@ defmodule RegistryManager.CLI.SpecTest do
     end
 
     test "command help shows only that command's options" do
-      help = Spec.render_command_help("pr-status")
+      help = Spec.render_command_help("list")
 
-      assert help =~ "--state"
-      assert help =~ "--review-requested"
-      refute help =~ "--sort-by-time"
+      assert help =~ "--long"
+      assert help =~ "--show-protection"
       refute help =~ "--delete-github-repo"
     end
 

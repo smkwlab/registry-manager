@@ -194,29 +194,25 @@ defmodule RegistryManager.Commands.ListTest do
     } do
       opts = [long: true]
 
-      # Issue #107: デフォルトでactivity_dataを取得するため、テスト用データを提供
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"last_activity" => "2025-07-09T12:00:00Z"},
-        "k21rs002-wr" => %{"last_activity" => "2025-07-08T15:30:00Z"},
-        "k21rs003-ise-report1" => %{"last_activity" => "2025-07-07T10:00:00Z"}
-      }
-
       {:ok, output} =
         List.run([], opts,
           repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
+          csv_data: csv_data
         )
 
       lines = String.split(output, "\n", trim: true)
 
-      # ヘッダー行を確認
+      # ヘッダー行を確認: long はレジストリ詳細列をまとめて表示する
       header = Enum.at(lines, 0)
       assert String.contains?(header, "Repository")
       assert String.contains?(header, "Name")
       assert String.contains?(header, "GitHub User")
-      # Issue #107: デフォルトでLast Activityが表示される
-      assert String.contains?(header, "Last Activity")
+      assert String.contains?(header, "Type")
+      assert String.contains?(header, "Protection (recorded)")
+      assert String.contains?(header, "Registry Updated")
+      # 監視系の列は出さない
+      refute String.contains?(header, "Last Activity")
+      refute String.contains?(header, "Owner Activity")
 
       # データ行を確認（少なくとも3行のデータ + 1行のヘッダー + 1行のセパレータ）
       assert length(lines) >= 5
@@ -412,219 +408,27 @@ defmodule RegistryManager.Commands.ListTest do
       # 同じ時刻の場合はアルファベット順になるべき
       assert lines == ["a-repo", "m-repo", "z-repo"]
     end
-
-    test "activity flag alone does not change sort order" do
-      activity_repositories = %{
-        "c-repo" => %{
-          "student_id" => "k21rs003",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-09T12:00:00.000000Z"
-        },
-        "a-repo" => %{
-          "student_id" => "k21rs001",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-09T10:00:00.000000Z"
-        },
-        "b-repo" => %{
-          "student_id" => "k21rs002",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-08T10:00:00.000000Z"
-        }
-      }
-
-      # activity_dataを別途定義してテストパラメータに渡す
-      activity_data = %{
-        # 最新活動
-        "c-repo" => %{"last_activity" => "2025-07-09T15:00:00.000000Z"},
-        # 古い活動
-        "a-repo" => %{"last_activity" => "2025-07-08T12:00:00.000000Z"},
-        # 中間の活動
-        "b-repo" => %{"last_activity" => "2025-07-09T08:00:00.000000Z"}
-      }
-
-      # -a のみ（ソート順は変更されない、アルファベット順のまま）
-      opts = [activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: activity_repositories,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      data_lines = Enum.drop(lines, 2)
-
-      repo_names =
-        Enum.map(data_lines, fn line ->
-          line |> String.split() |> Enum.at(0)
-        end)
-
-      # アルファベット順のまま（活動時刻順ではない）
-      assert repo_names == ["a-repo", "b-repo", "c-repo"], "Should remain in alphabetical order"
-    end
-
-    test "time and activity flags sort by activity time" do
-      activity_repositories = %{
-        "k21rs001-repo" => %{
-          "student_id" => "k21rs001",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-09T10:00:00.000000Z"
-        },
-        "k21rs002-repo" => %{
-          "student_id" => "k21rs002",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-08T10:00:00.000000Z"
-        },
-        "k21rs003-repo" => %{
-          "student_id" => "k21rs003",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-09T12:00:00.000000Z"
-        }
-      }
-
-      activity_data = %{
-        # 古い活動
-        "k21rs001-repo" => %{"last_activity" => "2025-07-08T12:00:00.000000Z"},
-        # 新しい活動
-        "k21rs002-repo" => %{"last_activity" => "2025-07-09T15:00:00.000000Z"},
-        # 中間の活動
-        "k21rs003-repo" => %{"last_activity" => "2025-07-09T08:00:00.000000Z"}
-      }
-
-      # -t -a: 活動時刻でソート
-      opts = [sort: "time", activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: activity_repositories,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      data_lines = Enum.drop(lines, 2)
-
-      repo_names =
-        Enum.map(data_lines, fn line ->
-          line |> String.split() |> Enum.at(0)
-        end)
-
-      # 活動時刻順（新しい順）: k21rs002 (15:00) > k21rs003 (08:00) > k21rs001 (12:00 but Jul 8)
-      assert Enum.at(repo_names, 0) == "k21rs002-repo",
-             "Expected k21rs002-repo first (latest activity)"
-
-      assert Enum.at(repo_names, 1) == "k21rs003-repo", "Expected k21rs003-repo second"
-
-      assert Enum.at(repo_names, 2) == "k21rs001-repo",
-             "Expected k21rs001-repo last (oldest activity)"
-    end
-
-    test "owner activity flag alone does not change sort order" do
-      owner_activity_repositories = %{
-        "z-repo" => %{
-          "student_id" => "k21rs001",
-          "repository_type" => "wr"
-        },
-        "a-repo" => %{
-          "student_id" => "k21rs002",
-          "repository_type" => "wr"
-        }
-      }
-
-      # owner_activity_dataを別途定義
-      owner_activity_data = %{
-        # 新しい所有者活動
-        "z-repo" => %{"owner_last_activity" => "2025-07-09T15:00:00.000000Z"},
-        # 古い所有者活動
-        "a-repo" => %{"owner_last_activity" => "2025-07-08T10:00:00.000000Z"}
-      }
-
-      # -o のみ（ソート順は変更されない、アルファベット順のまま）
-      opts = [owner_activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: owner_activity_repositories,
-          activity_data: owner_activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      data_lines = Enum.drop(lines, 2)
-
-      repo_names =
-        Enum.map(data_lines, fn line ->
-          line |> String.split() |> Enum.at(0)
-        end)
-
-      # アルファベット順のまま（所有者活動時刻順ではない）
-      assert repo_names == ["a-repo", "z-repo"], "Should remain in alphabetical order"
-    end
-
-    test "time and owner activity flags sort by owner activity time" do
-      owner_activity_repositories = %{
-        "z-repo" => %{
-          "student_id" => "k21rs001",
-          "repository_type" => "wr"
-        },
-        "a-repo" => %{
-          "student_id" => "k21rs002",
-          "repository_type" => "wr"
-        }
-      }
-
-      owner_activity_data = %{
-        # 古い所有者活動
-        "z-repo" => %{"owner_last_activity" => "2025-07-08T10:00:00.000000Z"},
-        # 新しい所有者活動
-        "a-repo" => %{"owner_last_activity" => "2025-07-09T15:00:00.000000Z"}
-      }
-
-      # -t -o: 所有者活動時刻でソート
-      opts = [sort: "time", owner_activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: owner_activity_repositories,
-          activity_data: owner_activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      data_lines = Enum.drop(lines, 2)
-
-      repo_names =
-        Enum.map(data_lines, fn line ->
-          line |> String.split() |> Enum.at(0)
-        end)
-
-      # 所有者活動時刻順（新しい順）: a-repo (15:00) > z-repo (10:00)
-      assert Enum.at(repo_names, 0) == "a-repo", "Expected a-repo first (latest owner activity)"
-      assert Enum.at(repo_names, 1) == "z-repo", "Expected z-repo second"
-    end
   end
 
   describe "run/2 - output formats" do
     test "outputs CSV format", %{repositories: repositories, csv_data: csv_data} do
       opts = [format: "csv", long: true]
 
-      # Issue #107: デフォルトでactivity_dataを取得するため、テスト用データを提供
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"last_activity" => "2025-07-09T12:00:00Z"},
-        "k21rs002-wr" => %{"last_activity" => "2025-07-08T15:30:00Z"},
-        "k21rs003-ise-report1" => %{"last_activity" => "2025-07-07T10:00:00Z"}
-      }
-
       {:ok, output} =
         List.run([], opts,
           repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
+          csv_data: csv_data
         )
 
       lines = String.split(output, "\n", trim: true)
 
-      # CSV ヘッダー
+      # CSV ヘッダー: long はレジストリ詳細列を出す
       header = Enum.at(lines, 0)
-      # Issue #107: デフォルトでlast_activityが表示される
-      assert String.contains?(header, "repository,name,github_username,last_activity")
+
+      assert String.contains?(
+               header,
+               "repository,name,github_username,type,protection_status,registry_updated_at"
+             )
 
       # CSV データ
       data_line = Enum.at(lines, 1)
@@ -653,131 +457,6 @@ defmodule RegistryManager.Commands.ListTest do
       {:error, reason} = List.run([], opts, repositories: repositories)
 
       assert String.contains?(reason, "Invalid format")
-    end
-  end
-
-  describe "run/2 - activity information" do
-    test "includes activity information with --activity", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # モック活動情報
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"last_activity" => "2025-07-09T12:00:00.000Z"},
-        "k21rs002-wr" => %{"last_activity" => "2025-07-08T15:30:00.000Z"}
-      }
-
-      opts = [long: true, activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-      assert String.contains?(header, "Last Activity")
-
-      content = Enum.join(lines, "\n")
-      # JST変換済み
-      assert String.contains?(content, "2025-07-09 21:00:00")
-    end
-
-    test "includes owner activity information with --owner-activity", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # モック活動情報
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"owner_last_activity" => "2025-07-09T10:00:00.000Z"},
-        "k21rs002-wr" => %{"owner_last_activity" => "2025-07-08T14:00:00.000Z"}
-      }
-
-      opts = [long: true, owner_activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-      assert String.contains?(header, "Owner Activity")
-
-      content = Enum.join(lines, "\n")
-      # JST変換済み
-      assert String.contains?(content, "2025-07-09 19:00:00")
-    end
-
-    test "handles missing activity data gracefully", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      opts = [long: true, activity: true]
-
-      {:ok, output} =
-        List.run([], opts, repositories: repositories, csv_data: csv_data, activity_data: %{})
-
-      content = Enum.join(String.split(output, "\n", trim: true), "\n")
-      assert String.contains?(content, "N/A")
-    end
-
-    test "automatically enables long format with -o (owner_activity) option", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # -o オプション単体（longフラグなし）でテーブル形式になることを確認
-      opts = [owner_activity: true]
-
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"owner_last_activity" => "2025-07-09T08:30:00.000Z"}
-      }
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # ヘッダーにOwner Activityカラムが含まれることを確認
-      assert String.contains?(header, "Owner Activity")
-      # テーブル形式で表示されることを確認
-      assert String.contains?(header, "Repository")
-    end
-
-    test "automatically enables long format with -a (activity) option", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # -a オプション単体（longフラグなし）でテーブル形式になることを確認
-      opts = [activity: true]
-
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"last_activity" => "2025-07-09T12:00:00.000Z"}
-      }
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # ヘッダーにLast Activityカラムが含まれることを確認
-      assert String.contains?(header, "Last Activity")
-      # テーブル形式で表示されることを確認
-      assert String.contains?(header, "Repository")
     end
   end
 
@@ -948,134 +627,6 @@ defmodule RegistryManager.Commands.ListTest do
       # student001 にマッチ
       assert String.contains?(content, "田中太郎")
       refute String.contains?(content, "N/A")
-    end
-  end
-
-  describe "run/2 - caching" do
-    test "uses cache by default for activity information", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      opts = [long: true, activity: true]
-
-      # キャッシュからデータを取得することを期待
-      {:ok, _output} =
-        List.run([], opts, repositories: repositories, csv_data: csv_data, use_cache: true)
-
-      # キャッシュが使用されたことを確認（実装依存）
-      # 実際のキャッシュテストは統合テストで
-      assert true
-    end
-
-    test "bypasses cache with --no-cache", %{repositories: repositories, csv_data: csv_data} do
-      opts = [long: true, activity: true, no_cache: true]
-
-      {:ok, _output} =
-        List.run([], opts, repositories: repositories, csv_data: csv_data, use_cache: false)
-
-      # キャッシュがバイパスされたことを確認（実装依存）
-      # 実際のキャッシュテストは統合テストで
-      assert true
-    end
-  end
-
-  describe "parallel activity fetching" do
-    test "activity information fetched in parallel through integration test", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # 活動情報を含む統合テストで並列処理を検証
-      # モック活動データを提供
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"last_activity" => "2025-07-09T12:00:00.000Z"},
-        "k21rs002-wr" => %{"last_activity" => "2025-07-08T15:30:00.000Z"},
-        "k21rs003-ise-report1" => %{"last_activity" => "2025-07-07T10:00:00.000Z"}
-      }
-
-      opts = [long: true, activity: true]
-
-      start_time = System.monotonic_time(:millisecond)
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      end_time = System.monotonic_time(:millisecond)
-
-      # 結果が適切に生成されることを確認
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-      assert String.contains?(header, "Last Activity")
-
-      # 並列処理が高速に完了することを確認（モックなので高速）
-      execution_time = end_time - start_time
-      # 5秒以内
-      assert execution_time < 5000
-
-      # すべてのリポジトリが結果に含まれることを確認
-      content = Enum.join(lines, "\n")
-      assert String.contains?(content, "k21rs001-sotsuron")
-      assert String.contains?(content, "k21rs002-wr")
-      assert String.contains?(content, "k21rs003-ise-report1")
-    end
-
-    test "handles multiple repositories with order preservation", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # 順序保持の統合テスト
-      activity_data = %{
-        "k21rs001-sotsuron" => %{"last_activity" => "2025-07-09T12:00:00.000Z"},
-        "k21rs002-wr" => %{"last_activity" => "2025-07-08T15:30:00.000Z"},
-        "k21rs003-ise-report1" => %{"last_activity" => "2025-07-07T10:00:00.000Z"}
-      }
-
-      opts = [activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-
-      # ヘッダー行とセパレータ行をスキップしてデータ行を確認
-      # ヘッダーとセパレータをスキップ
-      data_lines = Enum.drop(lines, 2)
-
-      # データ行がアルファベット順に並んでいることを確認
-      # 各行の最初の部分にリポジトリ名が含まれることを確認
-      assert String.starts_with?(Enum.at(data_lines, 0), "k21rs001-sotsuron")
-      assert String.starts_with?(Enum.at(data_lines, 1), "k21rs002-wr")
-      assert String.starts_with?(Enum.at(data_lines, 2), "k21rs003-ise-report1")
-    end
-
-    test "handles missing activity data gracefully in parallel execution", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      # エラーケースの統合テスト - 空の活動データ
-      opts = [long: true, activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          # 空のデータでエラーハンドリングをテスト
-          activity_data: %{}
-        )
-
-      # エラーが発生しても適切にフォールバック値が表示されることを確認
-      content = Enum.join(String.split(output, "\n", trim: true), "\n")
-      # フォールバック値
-      assert String.contains?(content, "N/A")
-      # リポジトリ名は表示される
-      assert String.contains?(content, "k21rs001-sotsuron")
     end
   end
 
@@ -1322,20 +873,22 @@ defmodule RegistryManager.Commands.ListTest do
     end
   end
 
-  describe "single timestamp display (Issue #92, updated by Issue #107)" do
+  describe "registry view details (long mode)" do
     setup do
       test_repositories = %{
         "k21rs001-sotsuron" => %{
           "student_id" => "k21rs001",
           "repository_type" => "sotsuron",
           "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
-          "github_username" => "student001"
+          "github_username" => "student001",
+          "protection_status" => "protected"
         },
         "k21rs002-wr" => %{
           "student_id" => "k21rs002",
           "repository_type" => "wr",
           "registry_updated_at" => "2025-07-09T10:00:00.000000Z",
-          "github_username" => "student002"
+          "github_username" => "student002",
+          "protection_status" => "not_protected"
         }
       }
 
@@ -1344,406 +897,92 @@ defmodule RegistryManager.Commands.ListTest do
         %{"student_id" => "k21rs002", "name" => "佐藤花子", "github_username" => "student002"}
       ]
 
-      activity_data = %{
-        "k21rs001-sotsuron" => %{
-          "last_activity" => "2025-07-09T12:00:00Z",
-          "owner_last_activity" => "2025-07-09T10:00:00Z"
-        },
-        "k21rs002-wr" => %{
-          "last_activity" => "2025-07-09T14:00:00Z",
-          "owner_last_activity" => "2025-07-09T11:00:00Z"
-        }
-      }
-
-      {:ok,
-       repositories: test_repositories, csv_data: test_csv_data, activity_data: activity_data}
+      {:ok, repositories: test_repositories, csv_data: test_csv_data}
     end
 
-    test "shows only Last Activity when -l option is used alone (Issue #107: default changed)", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # Issue #107: デフォルトでLast Activityが表示される
-      assert String.contains?(header, "Last Activity")
-      # Registry UpdatedとOwner Activityカラムが存在しないことを確認
-      refute String.contains?(header, "Registry Updated")
-      refute String.contains?(header, "Owner Activity")
-    end
-
-    test "shows only Last Activity when -l -a options are used", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true, activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # Last Activityカラムが存在することを確認
-      assert String.contains?(header, "Last Activity")
-      # Registry UpdatedとOwner Activityカラムが存在しないことを確認
-      refute String.contains?(header, "Registry Updated")
-      refute String.contains?(header, "Owner Activity")
-    end
-
-    test "shows only Owner Activity when -l -o options are used", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true, owner_activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # Owner Activityカラムが存在することを確認
-      assert String.contains?(header, "Owner Activity")
-      # Registry UpdatedとLast Activityカラムが存在しないことを確認
-      refute String.contains?(header, "Registry Updated")
-      refute String.contains?(header, "Last Activity")
-    end
-
-    test "shows only Owner Activity when both -a and -o are specified (Owner Activity takes precedence in Issue #107)",
-         %{
-           repositories: repositories,
-           csv_data: csv_data,
-           activity_data: activity_data
-         } do
-      opts = [long: true, activity: true, owner_activity: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # Issue #107: owner_activityが優先される（condの順序による）
-      assert String.contains?(header, "Owner Activity")
-      # Registry UpdatedとLast Activityカラムが存在しないことを確認
-      refute String.contains?(header, "Registry Updated")
-      refute String.contains?(header, "Last Activity")
-    end
-
-    test "CSV format respects single timestamp display rule with -a option", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true, activity: true, format: "csv"]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # CSVヘッダーでもLast Activityのみ存在
-      assert String.contains?(header, "last_activity")
-      refute String.contains?(header, "registry_updated_at")
-      refute String.contains?(header, "owner_activity")
-    end
-
-    test "JSON format respects single timestamp display rule with -o option", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true, owner_activity: true, format: "json"]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      assert {:ok, json_data} = Jason.decode(output)
-      first_repo = Enum.at(json_data, 0)
-
-      # JSONでもOwner Activityのみ存在
-      assert Map.has_key?(first_repo, "owner_activity")
-      refute Map.has_key?(first_repo, "registry_updated_at")
-      refute Map.has_key?(first_repo, "last_activity")
-    end
-  end
-
-  describe "no-cache option behavior" do
-    test "no-cache option should still cache the fetched data" do
-      # --no-cache オプション使用時も取得したデータをキャッシュに保存することを確認
-      repositories = %{
-        "test-repo" => %{
-          "student_id" => "k21rs001",
-          "repository_type" => "wr",
-          "github_username" => "testuser",
-          "created_at" => "2025-07-01T00:00:00Z"
-        }
-      }
-
-      # テスト用アクティビティデータ
-      activity_data = %{
-        "test-repo" => %{
-          "last_activity" => "2025-07-10T12:00:00Z",
-          "owner_last_activity" => "2025-07-10T14:00:00Z"
-        }
-      }
-
-      # --no-cache オプション使用時のテスト
-      opts = [long: true, activity: true, no_cache: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          activity_data: activity_data,
-          csv_data: []
-        )
-
-      # 出力に活動情報が含まれていることを確認
-      assert String.contains?(output, "test-repo")
-      assert String.contains?(output, "2025-07-10")
-    end
-  end
-
-  describe "default timestamp display (Issue #107)" do
-    setup do
-      test_repositories = %{
-        "k21rs001-sotsuron" => %{
-          "student_id" => "k21rs001",
-          "repository_type" => "sotsuron",
-          "registry_updated_at" => "2025-07-08T15:30:00.000000Z",
-          "github_username" => "student001"
-        },
-        "k21rs002-wr" => %{
-          "student_id" => "k21rs002",
-          "repository_type" => "wr",
-          "registry_updated_at" => "2025-07-09T10:00:00.000000Z",
-          "github_username" => "student002"
-        }
-      }
-
-      test_csv_data = [
-        %{"student_id" => "k21rs001", "name" => "田中太郎", "github_username" => "student001"},
-        %{"student_id" => "k21rs002", "name" => "佐藤花子", "github_username" => "student002"}
-      ]
-
-      activity_data = %{
-        "k21rs001-sotsuron" => %{
-          "last_activity" => "2025-07-09T12:00:00Z"
-        },
-        "k21rs002-wr" => %{
-          "last_activity" => "2025-07-09T14:00:00Z"
-        }
-      }
-
-      {:ok,
-       repositories: test_repositories, csv_data: test_csv_data, activity_data: activity_data}
-    end
-
-    test "shows Last Activity by default with --long option", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # Last Activityカラムがデフォルトで存在することを確認
-      assert String.contains?(header, "Last Activity")
-      # Registry Updatedカラムは表示されない
-      refute String.contains?(header, "Registry Updated")
-    end
-
-    test "shows Registry Updated with --show-registry-updated option", %{
+    test "long shows the registry detail columns and no monitoring columns", %{
       repositories: repositories,
       csv_data: csv_data
     } do
-      opts = [long: true, show_registry_updated: true]
+      {:ok, output} = List.run([], [long: true], repositories: repositories, csv_data: csv_data)
 
+      header = output |> String.split("\n", trim: true) |> Enum.at(0)
+
+      assert String.contains?(header, "Type")
+      assert String.contains?(header, "Protection (recorded)")
+      assert String.contains?(header, "Registry Updated")
+      refute String.contains?(header, "Last Activity")
+      refute String.contains?(header, "Owner Activity")
+    end
+
+    test "protection column header marks the value as recorded", %{
+      repositories: repositories,
+      csv_data: csv_data
+    } do
       {:ok, output} =
-        List.run([], opts,
+        List.run([], [long: true, show_protection: true],
           repositories: repositories,
           csv_data: csv_data
         )
 
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
+      header = output |> String.split("\n", trim: true) |> Enum.at(0)
+      assert String.contains?(header, "Protection (recorded)")
 
-      # Registry Updatedカラムが存在することを確認
-      assert String.contains?(header, "Registry Updated")
-      # Last Activityカラムは表示されない（Registry Updatedの代わりに表示）
-      refute String.contains?(header, "Last Activity")
+      assert String.contains?(output, "protected")
+      assert String.contains?(output, "not_protected")
     end
 
-    test "shows both Last Activity and Registry Updated with --show-both-timestamps option", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true, show_both_timestamps: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # 両方のカラムが存在することを確認
-      assert String.contains?(header, "Last Activity")
-      assert String.contains?(header, "Registry Updated")
-    end
-
-    test "--show-both-timestamps takes precedence over --show-registry-updated", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      # 両方のオプションが指定された場合、--show-both-timestampsが優先される
-      opts = [long: true, show_both_timestamps: true, show_registry_updated: true]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # 両方のタイムスタンプが表示される
-      assert String.contains?(header, "Last Activity")
-      assert String.contains?(header, "Registry Updated")
-    end
-
-    test "CSV format uses Last Activity by default", %{
-      repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
-    } do
-      opts = [long: true, format: "csv"]
-
-      {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # CSVヘッダーでもLast Activityがデフォルト
-      assert String.contains?(header, "last_activity")
-      refute String.contains?(header, "registry_updated_at")
-    end
-
-    test "CSV format respects --show-registry-updated option", %{
+    test "Registry Updated values are JST-formatted from registry_updated_at", %{
       repositories: repositories,
       csv_data: csv_data
     } do
-      opts = [long: true, format: "csv", show_registry_updated: true]
+      {:ok, output} = List.run([], [long: true], repositories: repositories, csv_data: csv_data)
 
+      content = output
+      # 2025-07-08T15:30:00Z -> JST 2025-07-09 00:30:00
+      assert String.contains?(content, "2025-07-09 00:30:00")
+    end
+
+    test "--show-registry-updated renders the registry updated column in basic table via long", %{
+      repositories: repositories,
+      csv_data: csv_data
+    } do
       {:ok, output} =
-        List.run([], opts,
+        List.run([], [long: true, show_registry_updated: true],
           repositories: repositories,
           csv_data: csv_data
         )
 
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
+      header = output |> String.split("\n", trim: true) |> Enum.at(0)
+      assert String.contains?(header, "Registry Updated")
+    end
 
-      # Registry Updatedが表示される（Last Activityの代わりに）
+    test "CSV in long mode emits the registry detail columns", %{
+      repositories: repositories,
+      csv_data: csv_data
+    } do
+      {:ok, output} =
+        List.run([], [long: true, format: "csv"], repositories: repositories, csv_data: csv_data)
+
+      header = output |> String.split("\n", trim: true) |> Enum.at(0)
       assert String.contains?(header, "registry_updated_at")
+      assert String.contains?(header, "protection_status")
       refute String.contains?(header, "last_activity")
     end
 
-    test "JSON format uses Last Activity by default", %{
+    test "JSON in long mode includes registry_updated_at and no activity fields", %{
       repositories: repositories,
-      csv_data: csv_data,
-      activity_data: activity_data
+      csv_data: csv_data
     } do
-      opts = [long: true, format: "json"]
-
       {:ok, output} =
-        List.run([], opts,
-          repositories: repositories,
-          csv_data: csv_data,
-          activity_data: activity_data
-        )
+        List.run([], [long: true, format: "json"], repositories: repositories, csv_data: csv_data)
 
       assert {:ok, json_data} = Jason.decode(output)
       first_repo = Enum.at(json_data, 0)
 
-      # JSONでもLast Activityがデフォルト
-      assert Map.has_key?(first_repo, "last_activity")
-      refute Map.has_key?(first_repo, "registry_updated_at")
-    end
-
-    test "handles missing activity data gracefully with default behavior", %{
-      repositories: repositories,
-      csv_data: csv_data
-    } do
-      opts = [long: true]
-
-      {:ok, output} =
-        List.run([], opts, repositories: repositories, csv_data: csv_data, activity_data: %{})
-
-      lines = String.split(output, "\n", trim: true)
-      header = Enum.at(lines, 0)
-
-      # Last Activityカラムは表示される
-      assert String.contains?(header, "Last Activity")
-      # データはN/Aとして表示される
-      content = Enum.join(lines, "\n")
-      assert String.contains?(content, "N/A")
+      assert Map.has_key?(first_repo, "registry_updated_at")
+      refute Map.has_key?(first_repo, "last_activity")
+      refute Map.has_key?(first_repo, "owner_activity")
     end
   end
 end

@@ -166,34 +166,6 @@ defmodule RegistryManager.Test.GitHubAPIMock do
   end
 
   @doc """
-  テスト用リポジトリ活動時刻取得
-  """
-  def get_repository_activity(repo_name, opts \\ []) do
-    default_fun = fn repo_name, _opts ->
-      cond do
-        String.contains?(repo_name, "nonexistent") ->
-          {:error, "Repository not found"}
-
-        String.contains?(repo_name, "error") ->
-          {:error, "GitHub API error"}
-
-        repo_name == "smkwlab/thesis-student-registry" ->
-          {:ok, "2025-07-02T06:30:00Z"}
-
-        String.starts_with?(repo_name, "k") ->
-          # Mock student repository activity
-          {:ok, "2025-07-01T12:00:00Z"}
-
-        true ->
-          {:ok, "2025-06-30T09:00:00Z"}
-      end
-    end
-
-    response_fun = get_mock_response(:get_repository_activity, default_fun)
-    response_fun.(repo_name, opts)
-  end
-
-  @doc """
   テスト用実際の開発者取得
   """
   def get_actual_developer(repo_name, opts \\ []) do

@@ -57,33 +57,6 @@ defmodule RegistryManager.MultipleOwnersIntegrationTest do
       # 複数オーナーが正しく表示される
       assert output =~ "k93RS101, mockuser101"
     end
-
-    test "list with owner activity works with multiple owners", %{test_data: test_data} do
-      # オーナーアクティビティオプションが複数オーナーで動作することを確認
-      test_repos = %{
-        "k93rs101-wr" => test_data["k93rs101-wr"]
-      }
-
-      # モックアクティビティデータ
-      test_activity = %{
-        "k93rs101-wr" => %{
-          "last_activity" => "2025-07-08T12:00:00Z",
-          "owner_last_activity" => "2025-07-10T15:30:00Z"
-        }
-      }
-
-      result =
-        List.run([], [long: true, owner_activity: true],
-          repositories: test_repos,
-          activity_data: test_activity,
-          csv_data: []
-        )
-
-      assert {:ok, output} = result
-      assert output =~ "k93rs101-wr"
-      # オーナーアクティビティの日付が含まれている
-      assert output =~ "2025-07-11"
-    end
   end
 
   describe "compatibility module integration" do
