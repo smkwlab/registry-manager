@@ -50,7 +50,7 @@ defmodule RegistryManager.MixProject do
       {:tool_kit, github: "smkwlab/elixir-tool-kit", tag: "v0.3.0"},
       {:jason, "~> 1.4"},
       {:yaml_elixir, "~> 2.9"},
-      {:req, "~> 0.4"},
+      {:req, "~> 0.7"},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
