@@ -6,26 +6,37 @@ defmodule RegistryManager.Repository do
   データ永続化は DataStore モジュールに委譲し、外部依存を完全に分離します。
   """
 
-  alias RegistryManager.{Config, Validation}
-  alias RegistryManager.Repository.{DataStore, Display, ErrorHandler}
+  alias RegistryManager.{Config, TimestampManager, Validation}
+  alias RegistryManager.Repository.{Compatibility, DataStore, Display, ErrorHandler}
 
   @doc """
   新しいリポジトリエントリを構築（ビジネスロジック）
 
   review_flow が nil の場合はタイプ由来の既定値
   （`Validation.default_review_flow/1`）を採用する。
+
+  `created_at` は「リポジトリが GitHub で作られた日時」。省略（nil）すると
+  `timestamp` を使う。推論経路は GitHub から取得した実値を渡す（issue #100）。
+
+  `github_username` は文字列でもリストでも受け、registry のデータ型に合わせて
+  リストで書き込む（issue #100）。空になる値（nil / "" / []）ではキーを置かない。
   """
   def build_new_entry(
         student_id,
         repo_type,
         timestamp,
         github_username \\ nil,
-        review_flow \\ nil
+        review_flow \\ nil,
+        created_at \\ nil
       ) do
     base_entry = %{
       "student_id" => student_id,
       "repository_type" => repo_type,
-      "created_at" => timestamp,
+      # created_at は「リポジトリが GitHub で作られた日時」、registry_updated_at は
+      # 「レジストリをいつ更新したか」で、別の意味を持つ。推論経路は前者に GitHub の
+      # 実値を渡す（issue #100。渡さず捨てていたため 2024 年作成のリポジトリに登録
+      # 日時が入っていた）。渡されない場合のみ timestamp で両者を揃える。
+      "created_at" => created_at || timestamp,
       "registry_updated_at" => timestamp,
       "review_flow" =>
         if(is_nil(review_flow),
@@ -34,15 +45,11 @@ defmodule RegistryManager.Repository do
         )
     }
 
-    case github_username do
-      nil ->
-        base_entry
-
-      username when is_binary(username) and username != "" ->
-        Map.put(base_entry, "github_username", username)
-
-      _ ->
-        base_entry
+    # registry の github_username はリスト型（複数所有者）。読み込み時の正規化に
+    # 頼らず、書き込み時に型を揃える（issue #100）。
+    case Compatibility.normalize_github_username(github_username) do
+      [] -> base_entry
+      usernames -> Map.put(base_entry, "github_username", usernames)
     end
   end
 
@@ -76,7 +83,7 @@ defmodule RegistryManager.Repository do
   def get_validated_timestamp(opts) do
     case Keyword.get(opts, :timestamp) do
       nil ->
-        {:ok, DateTime.utc_now() |> DateTime.to_iso8601()}
+        {:ok, TimestampManager.now_iso8601()}
 
       timestamp when is_binary(timestamp) ->
         validate_timestamp_format(timestamp)
@@ -252,6 +259,10 @@ defmodule RegistryManager.Repository do
         change_detail \\ nil
       ) do
     masked_student_id = mask_student_id(student_id)
+
+    # コミットメッセージ本文に載せる人間向けの時刻。レジストリのフィールドでは
+    # ないため、issue #100 の ISO8601 統一（TimestampManager.now_iso8601/0）の
+    # 対象外にしている。
     updated_at = DateTime.utc_now() |> DateTime.to_string()
 
     base_message = """
@@ -298,6 +309,10 @@ defmodule RegistryManager.Repository do
           opts
           |> Keyword.put(:inference_mode, true)
           |> Keyword.put(:github_username, inferred_data.github_username)
+          # GitHub から取得した実際の作成日時。渡さないと add/4 が実行時刻を
+          # created_at に入れてしまう（issue #100）。nil なら add/4 側で
+          # 実行時刻にフォールバックする。
+          |> Keyword.put(:created_at, inferred_data.created_at)
 
         add(base_repo_name, inferred_data.student_id, inferred_data.repo_type, inference_opts)
       end
@@ -328,9 +343,10 @@ defmodule RegistryManager.Repository do
       end
 
     with :ok <- validation_result,
-         {:ok, timestamp} <- get_validated_timestamp(opts) do
+         {:ok, timestamp} <- get_validated_timestamp(opts),
+         {:ok, created_at} <- resolve_created_at(opts, timestamp) do
       if opts[:dry_run] do
-        handle_dry_run_add(repo_name, timestamp, opts)
+        handle_dry_run_add(repo_name, created_at, opts)
       else
         # Get GitHub username from inference data if available, otherwise from CSV or repository
         github_username =
@@ -338,7 +354,14 @@ defmodule RegistryManager.Repository do
             get_github_username_for_add(repo_name, student_id, opts)
 
         entry =
-          build_new_entry(student_id, repo_type, timestamp, github_username, opts[:review_flow])
+          build_new_entry(
+            student_id,
+            repo_type,
+            timestamp,
+            github_username,
+            opts[:review_flow],
+            created_at
+          )
 
         commit_message =
           build_commit_message(
@@ -355,11 +378,31 @@ defmodule RegistryManager.Repository do
     end
   end
 
-  defp handle_dry_run_add(repo_name, timestamp, opts) do
+  # 推論経路から渡された GitHub の作成日時を検証し、書式を ISO8601 に揃える。
+  # 渡されていない（nil）場合は実行時刻（fallback）をそのまま使う。
+  # `validate_timestamp_format/1` は "YYYY-MM-DD HH:MM:SS UTC" しか受けないため、
+  # GitHub の "2024-04-01T12:34:56Z" を通せる parse_github_time/1 で検証する。
+  defp resolve_created_at(opts, fallback) do
+    case Keyword.get(opts, :created_at) do
+      nil ->
+        {:ok, fallback}
+
+      value when is_binary(value) ->
+        case TimestampManager.parse_github_time(value) do
+          {:ok, datetime} -> {:ok, TimestampManager.to_iso8601_utc(datetime)}
+          {:error, _reason} -> {:error, "created_at must be a parsable timestamp: #{value}"}
+        end
+
+      _ ->
+        {:error, "created_at must be a string"}
+    end
+  end
+
+  defp handle_dry_run_add(repo_name, created_at, opts) do
     message = "[DRY-RUN] リポジトリ情報を追加: #{repo_name}"
 
     if opts[:verbose] do
-      {:ok, message <> " (created_at: #{timestamp})"}
+      {:ok, message <> " (created_at: #{created_at})"}
     else
       {:ok, message}
     end
@@ -384,6 +427,20 @@ defmodule RegistryManager.Repository do
 
   defp normalize_update_value("review_flow", value),
     do: {:error, "review_flow の値が不正です: #{value}（true または false を指定してください）"}
+
+  # github_username はリスト型（複数所有者）。update は値を素のまま書くため、ここを
+  # 通すと JSON 文字列が ["[\"user\"]"] として保存され、読み込み時の正規化が
+  # 「文字列 1 件のリスト」として受け入れてしまう（壊れた値が正しい形に見える）。
+  # owners の書き込み口は edit --set-owners（Compatibility.set_github_usernames/2）
+  # の 1 本に保ち、update では拒否して案内する（issue #100）。
+  defp normalize_update_value("github_username", _value) do
+    {:error,
+     "github_username は update では設定できません\n" <>
+       "   このフィールドは複数所有者を持つためリスト型です。\n" <>
+       "   次を使ってください:\n" <>
+       "     registry-manager edit <repo> --set-owners user1\n" <>
+       "     registry-manager edit <repo> --set-owners user1,user2"}
+  end
 
   defp normalize_update_value(_field, value), do: {:ok, value}
 
@@ -637,10 +694,11 @@ defmodule RegistryManager.Repository do
 
   # 推論関連のプライベート関数
 
+  # 接頭辞は付けずに渡す。GitHubAPI.ensure_full_repo_name/1 が 1 か所で付けるため、
+  # ここで先に付けると二重付与になる（issue #100）。
   defp infer_repository_data(repo_name, opts) do
-    with {:ok, full_repo_name} <- ensure_full_repo_name(repo_name),
-         {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(full_repo_name),
-         {:ok, github_owner} <- get_actual_repository_developer(full_repo_name, repo_info, opts) do
+    with {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(repo_name),
+         {:ok, github_owner} <- get_actual_repository_developer(repo_name, repo_info, opts) do
       build_repository_data(repo_name, repo_info, github_owner, opts)
     else
       error -> error
@@ -663,18 +721,6 @@ defmodule RegistryManager.Repository do
 
       error ->
         error
-    end
-  end
-
-  # 既に owner/repo 形式ならそのまま、そうでなければ github_org を前置する。
-  # github_org 未設定時は明示エラー（issue #45、"/repo" への静かな誤対象を防ぐ）。
-  defp ensure_full_repo_name(repo_name) do
-    if String.contains?(repo_name, "/") do
-      {:ok, repo_name}
-    else
-      with {:ok, org} <- Config.require_github_org() do
-        {:ok, "#{org}/#{repo_name}"}
-      end
     end
   end
 
@@ -751,10 +797,10 @@ defmodule RegistryManager.Repository do
   end
 
   defp fallback_to_repository_inference(repo_name, opts) do
-    with {:ok, full_repo_name} <- ensure_full_repo_name(repo_name),
-         {:ok, repo_info} <- RegistryManager.GitHubAPI.get_repository_info(full_repo_name) do
-      extract_github_username_from_repo_info(full_repo_name, repo_info, opts)
-    else
+    case RegistryManager.GitHubAPI.get_repository_info(repo_name) do
+      {:ok, repo_info} ->
+        extract_github_username_from_repo_info(repo_name, repo_info, opts)
+
       {:error, reason} ->
         # github_org 未設定エラー（issue #45）も含め理由をログに残す。推論は best-effort
         # なので契約どおり nil を返し、呼び出し側は username 未特定として続行する。

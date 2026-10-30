@@ -6,6 +6,7 @@ defmodule RegistryManager.Commands.Edit do
   """
 
   alias RegistryManager.Repository.{Compatibility, DataStore}
+  alias RegistryManager.TimestampManager
 
   require Logger
 
@@ -115,7 +116,7 @@ defmodule RegistryManager.Commands.Edit do
       Map.put(
         updated_repo_data,
         "registry_updated_at",
-        DateTime.utc_now() |> DateTime.to_iso8601()
+        TimestampManager.now_iso8601()
       )
 
     # Update the full registry data
