@@ -104,10 +104,14 @@ defmodule RegistryManager.RepositoryPersistenceTest do
     end
 
     test "refuses github_username in dry-run too" do
-      assert {:error, _message} =
+      # normalize_update_value/2 は dry_run の判定より前に走るので、案内文も同じ
+      # ものが返る。拒否されることだけでなく案内が出ることまで確かめる。
+      assert {:error, message} =
                Repository.update("k21rs001-sotsuron", "github_username", "student001",
                  dry_run: true
                )
+
+      assert message =~ "--set-owners"
     end
 
     # issue #100: update 経路だけが DateTime.to_string/1 を使っていたため、

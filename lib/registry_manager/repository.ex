@@ -398,6 +398,9 @@ defmodule RegistryManager.Repository do
     end
   end
 
+  # 第 2 引数は resolve_created_at/2 の結果。推論経路なら GitHub の実際の作成日時、
+  # それ以外は実行時刻へのフォールバックが入る。表示するラベルは従来から
+  # `created_at` で、変更前はこの値が created_at と registry_updated_at を兼ねていた。
   defp handle_dry_run_add(repo_name, created_at, opts) do
     message = "[DRY-RUN] リポジトリ情報を追加: #{repo_name}"
 

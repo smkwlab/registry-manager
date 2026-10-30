@@ -163,6 +163,19 @@ defmodule RegistryManager.GitHubAPI do
   他組織への静かな誤対象を防ぐ。owner が空の `"/repo"` も同じ理由で拒否する。
 
   解決した org も返すのは、呼び出し側での再取得（load_config 二重呼び出し）を避けるため。
+
+  `defp` ではなく `def` にしているのは、**この不変条件（冪等であること）を直接
+  テストできるようにするため**。間接テストだけでは足りないことが issue #100 で
+  実証されている — mock 分岐が付与の手前にあった間、mock のキーは正しい値を
+  持っていたのにテストは付与の行を一度も実行しなかった。`@doc false` にすると
+  呼び出し可能性は変わらないまま、この不変条件の説明だけが隠れるので採らない。
+
+  このモジュールの外から呼ぶ必要は現時点では無い。リポジトリ名を扱う公開関数
+  （`get_repository_info/1` ほか）はいずれも内部でこれを通すので、呼び出し側は
+  短名のまま渡せばよく、**先に接頭辞を付けてはいけない**。
+
+  それらの公開関数は、この関数が返した `{:error, reason}` を加工せずそのまま
+  返す（github_org 未設定や不正な名前は、API を叩く前にここで止まる）。
   """
   @spec ensure_full_repo_name(String.t()) ::
           {:ok, {String.t(), String.t()}} | {:error, String.t()}
@@ -183,6 +196,9 @@ defmodule RegistryManager.GitHubAPI do
 
   # プライベート実装関数
 
+  # :ok 側は Parser.extract_actual_developer/2 の戻り値をそのまま返すため、
+  # この関数は {:ok, developer} と {:error, reason} の両方を返し得る
+  # （コミットが空・著者が全員自動化アカウント、などで後者になる）。
   defp fetch_actual_developer(full_repo_name, org, opts) do
     case Client.get_actual_developer(full_repo_name, opts) do
       {:ok, commits} -> Parser.extract_actual_developer(commits, org)

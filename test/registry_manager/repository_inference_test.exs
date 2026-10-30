@@ -80,7 +80,13 @@ defmodule RegistryManager.RepositoryInferenceTest do
       assert {:ok, _} = Repository.add_with_inference("k21rs001-sotsuron")
 
       assert_received {:saved, entry}
-      assert entry["created_at"] == "2024-04-01T12:34:56Z"
+
+      # 瞬間と書式の両方を確かめる。文字列の等値比較だけだと to_iso8601_utc/1 の
+      # 描画（マイクロ秒の有無など）に結びついて脆くなり、瞬間の比較だけでは
+      # issue #100 の書式統一を担保できない。
+      assert {:ok, created_at, _} = DateTime.from_iso8601(entry["created_at"])
+      assert DateTime.compare(created_at, ~U[2024-04-01 12:34:56Z]) == :eq
+      assert entry["created_at"] =~ ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z\z/
 
       # registry_updated_at は実行時刻。併せて書式が ISO8601 であることも確認する
       # （issue #100 の書式分裂）。
