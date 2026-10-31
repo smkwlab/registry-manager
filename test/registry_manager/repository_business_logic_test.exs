@@ -55,14 +55,34 @@ defmodule RegistryManager.RepositoryBusinessLogicTest do
 
       result = Repository.build_new_entry(student_id, repo_type, timestamp, github_username)
 
+      # issue #100: 書き込み側の型をデータに合わせる。registry の github_username は
+      # 50/50 件がリストで、読み込み時の正規化に頼らず書き込み時に揃える。
       assert result == %{
                "student_id" => "k21rs001",
                "repository_type" => "wr",
                "created_at" => "2025-07-02 10:00:00 UTC",
                "registry_updated_at" => "2025-07-02 10:00:00 UTC",
-               "github_username" => "test-taro",
+               "github_username" => ["test-taro"],
                "review_flow" => false
              }
+    end
+
+    test "accepts a list of github_usernames and writes it as a list (issue #100)" do
+      result =
+        Repository.build_new_entry(
+          "k21rs001",
+          "wr",
+          "2025-07-02 10:00:00 UTC",
+          ["user1", "user2"]
+        )
+
+      assert result["github_username"] == ["user1", "user2"]
+    end
+
+    test "omits github_username when the list is empty (issue #100)" do
+      result = Repository.build_new_entry("k21rs001", "wr", "2025-07-02 10:00:00 UTC", [])
+
+      refute Map.has_key?(result, "github_username")
     end
 
     test "omits github_username when nil" do

@@ -5,6 +5,46 @@ defmodule RegistryManager.GitHubAPITest do
 
   # モックは MIX_ENV=test で自動的に有効化されます
 
+  # issue #100: 接頭辞の付与は GitHubAPI の 1 か所に寄せる。呼び出し側が先に付けて
+  # から渡すと二重付与（smkwlab/smkwlab/repo）になり、実運用では常に 404 を返した。
+  describe "ensure_full_repo_name/1" do
+    setup do
+      # github_org を固定し、実 config への依存をなくす。従前値は退避して復元する
+      # （無条件 delete で他テストの値を消さない）。
+      prev_overrides = Application.get_env(:registry_manager, :cli_overrides)
+      Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
+
+      on_exit(fn ->
+        case prev_overrides do
+          nil -> Application.delete_env(:registry_manager, :cli_overrides)
+          val -> Application.put_env(:registry_manager, :cli_overrides, val)
+        end
+      end)
+
+      :ok
+    end
+
+    test "prefixes a short name with the configured org" do
+      assert GitHubAPI.ensure_full_repo_name("k21rs001-sotsuron") ==
+               {:ok, {"smkwlab/k21rs001-sotsuron", "smkwlab"}}
+    end
+
+    test "is idempotent: an owner/repo name is returned unchanged" do
+      assert GitHubAPI.ensure_full_repo_name("smkwlab/k21rs001-sotsuron") ==
+               {:ok, {"smkwlab/k21rs001-sotsuron", "smkwlab"}}
+    end
+
+    test "takes the owner from the name rather than the configured org" do
+      assert GitHubAPI.ensure_full_repo_name("other-org/some-repo") ==
+               {:ok, {"other-org/some-repo", "other-org"}}
+    end
+
+    test "rejects an empty owner instead of targeting \"/repo\"" do
+      assert {:error, message} = GitHubAPI.ensure_full_repo_name("/some-repo")
+      assert message =~ "/some-repo"
+    end
+  end
+
   describe "get_repositories_json/0" do
     test "returns appropriate result based on environment" do
       # This test adapts to the actual environment state

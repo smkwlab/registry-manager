@@ -19,6 +19,20 @@ defmodule RegistryManager.TimestampManager do
   end
 
   @doc """
+  レジストリに書き込む現在時刻を ISO8601 で返す。
+
+  レジストリのタイムスタンプ生成はこのヘルパ 1 本に寄せる。以前は update 経路だけが
+  `DateTime.to_string/1`（`2026-10-20 05:15:54.146152Z`）を使い、add と edit は
+  `DateTime.to_iso8601/1`（`2026-10-20T05:15:54.146152Z`）を使っていたため、
+  registry に 4 書式が共存していた（issue #100）。`parse_github_time/1` が 4 書式
+  すべてを受けるので `validate` では検知されず、是正もされなかった。
+  """
+  @spec now_iso8601() :: String.t()
+  def now_iso8601 do
+    current_utc_time() |> to_iso8601_utc()
+  end
+
+  @doc """
   Formats a UTC DateTime for display in JST without timezone suffix.
 
   Example: 2025-07-09 19:30:00 (JST displayed as local time)

@@ -7,7 +7,24 @@ defmodule RegistryManager.Commands.ArchiveTest do
 
   setup do
     GitHubAPIMock.reset_mock_responses()
-    on_exit(fn -> GitHubAPIMock.reset_mock_responses() end)
+
+    # github_org を固定し、実 config への依存をなくす。GitHubAPI は接頭辞を付けて
+    # から mock に分岐するため（issue #100。分岐が付与の手前にあるとテストが付与
+    # コードを一度も通らない）、archive 系も github_org の解決を必要とする。
+    # 開発機には ~/.config/registry-manager/config.yml があり CI には無いので、
+    # 固定しないとローカルだけ通る。従前値は退避し on_exit で復元する。
+    prev_overrides = Application.get_env(:registry_manager, :cli_overrides)
+    Application.put_env(:registry_manager, :cli_overrides, %{github_org: "smkwlab"})
+
+    on_exit(fn ->
+      GitHubAPIMock.reset_mock_responses()
+
+      case prev_overrides do
+        nil -> Application.delete_env(:registry_manager, :cli_overrides)
+        val -> Application.put_env(:registry_manager, :cli_overrides, val)
+      end
+    end)
+
     :ok
   end
 

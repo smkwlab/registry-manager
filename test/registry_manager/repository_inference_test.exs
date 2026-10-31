@@ -28,6 +28,72 @@ defmodule RegistryManager.RepositoryInferenceTest do
       end)
     end
 
+    # issue #100: 呼び出し側が接頭辞を付けてから GitHubAPI に渡していたため
+    # smkwlab/smkwlab/... になり、実運用の add は常に 404 だった。mock 分岐が
+    # 付与の手前にあったためテストからは見えなかった。
+    test "passes the repository name to the GitHub API prefixed exactly once" do
+      test_pid = self()
+
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
+        send(test_pid, {:get_repository_info, repo_name})
+
+        {:ok, %{"owner" => %{"login" => "taro-yamada"}, "created_at" => "2025-01-01T00:00:00Z"}}
+      end)
+
+      Repository.add_with_inference("k21rs001-sotsuron", dry_run: true)
+
+      assert_received {:get_repository_info, "smkwlab/k21rs001-sotsuron"}
+    end
+
+    test "accepts an owner/repo argument without doubling the prefix" do
+      test_pid = self()
+
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
+        send(test_pid, {:get_repository_info, repo_name})
+
+        {:ok, %{"owner" => %{"login" => "taro-yamada"}, "created_at" => "2025-01-01T00:00:00Z"}}
+      end)
+
+      Repository.add_with_inference("smkwlab/k21rs001-sotsuron", dry_run: true)
+
+      assert_received {:get_repository_info, "smkwlab/k21rs001-sotsuron"}
+    end
+
+    # issue #100: 取得した created_at を add/4 に渡さず捨てていたため、2024 年作成の
+    # リポジトリに登録日時が入っていた。registry_updated_at は実行時刻のままにする。
+    test "stores the repository's GitHub creation time as created_at" do
+      test_pid = self()
+
+      GitHubAPIMock.set_mock_response(:get_repository_info, fn _repo_name ->
+        {:ok, %{"owner" => %{"login" => "taro-yamada"}, "created_at" => "2024-04-01T12:34:56Z"}}
+      end)
+
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data, _sha, _message ->
+        send(test_pid, {:saved, new_data["k21rs001-sotsuron"]})
+        {:ok, "Success"}
+      end)
+
+      GitHubAPIMock.set_mock_response(:get_repositories_json, fn ->
+        {:ok, {%{}, "mock_sha"}}
+      end)
+
+      assert {:ok, _} = Repository.add_with_inference("k21rs001-sotsuron")
+
+      assert_received {:saved, entry}
+
+      # 瞬間と書式の両方を確かめる。文字列の等値比較だけだと to_iso8601_utc/1 の
+      # 描画（マイクロ秒の有無など）に結びついて脆くなり、瞬間の比較だけでは
+      # issue #100 の書式統一を担保できない。
+      assert {:ok, created_at, _} = DateTime.from_iso8601(entry["created_at"])
+      assert DateTime.compare(created_at, ~U[2024-04-01 12:34:56Z]) == :eq
+      assert entry["created_at"] =~ ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z\z/
+
+      # registry_updated_at は実行時刻。併せて書式が ISO8601 であることも確認する
+      # （issue #100 の書式分裂）。
+      assert {:ok, updated_at, _} = DateTime.from_iso8601(entry["registry_updated_at"])
+      assert DateTime.diff(DateTime.utc_now(), updated_at) < 60
+    end
+
     test "successfully infers student_id from CSV via GitHub owner" do
       # Setup mock responses
       GitHubAPIMock.set_mock_response(:get_repository_info, fn repo_name ->
@@ -43,7 +109,9 @@ defmodule RegistryManager.RepositoryInferenceTest do
       GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data, _sha, _message ->
         assert new_data["k21rs001-sotsuron"]["student_id"] == "k21rs001"
         assert new_data["k21rs001-sotsuron"]["repository_type"] == "sotsuron"
-        assert new_data["k21rs001-sotsuron"]["github_username"] == "taro-yamada"
+
+        # issue #100: 書き込み側もリスト型に揃える（データは 50/50 件がリスト）
+        assert new_data["k21rs001-sotsuron"]["github_username"] == ["taro-yamada"]
         {:ok, "Success"}
       end)
 

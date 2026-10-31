@@ -91,6 +91,46 @@ defmodule RegistryManager.RepositoryPersistenceTest do
       assert message =~ "[DRY-RUN]"
       assert message =~ "status = done"
     end
+
+    # issue #100: update は値を素のまま書くため、リスト型の github_username に
+    # JSON 文字列を渡すと ["[\"user\"]"] が「正しい形」として保存されてしまった。
+    # owners の書き込み口は edit --set-owners の 1 本に保つ。
+    test "refuses github_username and points at edit --set-owners" do
+      assert {:error, message} =
+               Repository.update("k21rs001-sotsuron", "github_username", "student001", [])
+
+      assert message =~ "github_username"
+      assert message =~ "--set-owners"
+    end
+
+    test "refuses github_username in dry-run too" do
+      # normalize_update_value/2 は dry_run の判定より前に走るので、案内文も同じ
+      # ものが返る。拒否されることだけでなく案内が出ることまで確かめる。
+      assert {:error, message} =
+               Repository.update("k21rs001-sotsuron", "github_username", "student001",
+                 dry_run: true
+               )
+
+      assert message =~ "--set-owners"
+    end
+
+    # issue #100: update 経路だけが DateTime.to_string/1 を使っていたため、
+    # registry に 4 書式が共存していた。
+    test "writes registry_updated_at in ISO8601" do
+      test_pid = self()
+
+      GitHubAPIMock.set_mock_response(:update_repositories_json, fn new_data, _sha, _message ->
+        send(test_pid, {:saved, new_data["k21rs001-sotsuron"]})
+        {:ok, "Repository updated successfully"}
+      end)
+
+      assert {:ok, _} =
+               Repository.update("k21rs001-sotsuron", "protection_status", "protected", [])
+
+      assert_received {:saved, entry}
+
+      assert entry["registry_updated_at"] =~ ~r/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z\z/
+    end
   end
 
   describe "mark_protected/2" do

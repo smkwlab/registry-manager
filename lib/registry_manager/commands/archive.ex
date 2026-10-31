@@ -52,6 +52,7 @@ defmodule RegistryManager.Commands.Archive do
   alias RegistryManager.Archive.Classifier
   alias RegistryManager.GitHubAPI
   alias RegistryManager.Repository
+  alias RegistryManager.TimestampManager
 
   @close_comment "リポジトリの archive（卒業処理）に伴い、このプルリクエストをクローズします。"
   @commit_message "Archive graduated repositories (registry-manager)"
@@ -434,7 +435,7 @@ defmodule RegistryManager.Commands.Archive do
   end
 
   defp now_iso(test_params) do
-    test_params[:now] || DateTime.to_iso8601(DateTime.utc_now())
+    test_params[:now] || TimestampManager.now_iso8601()
   end
 
   defp get_registry(test_params) do

@@ -6,7 +6,7 @@ defmodule RegistryManager.Repository.DataStore do
   ビジネスロジックは含まず、純粋にデータの読み書きのみを担当します。
   """
 
-  alias RegistryManager.GitHubAPI
+  alias RegistryManager.{GitHubAPI, TimestampManager}
 
   @doc """
   レジストリデータを取得
@@ -38,7 +38,7 @@ defmodule RegistryManager.Repository.DataStore do
       updated_entry =
         existing_entry
         |> Map.put(field, value)
-        |> Map.put("registry_updated_at", DateTime.utc_now() |> DateTime.to_string())
+        |> Map.put("registry_updated_at", TimestampManager.now_iso8601())
 
       updated_data = Map.put(current_data, repo_name, updated_entry)
       GitHubAPI.update_repositories_json(updated_data, sha, commit_message)
