@@ -142,8 +142,11 @@ k21rs003-ise-report k21rs003  ise       2025-07-06 14:20
 ### 3. リポジトリ情報の更新
 
 ```bash
-# GitHub ユーザー名の設定
-./registry-manager update k21rs001-sotsuron github_username student001
+# オーナーの設定（github_username はリスト型なので update では設定できない）
+./registry-manager edit k21rs001-sotsuron --set-owners student001
+
+# 単一値フィールドの更新
+./registry-manager update k21rs001-fit26 review_flow true
 
 # 保護状態のマーク
 ./registry-manager protect k21rs001-sotsuron
@@ -264,15 +267,18 @@ archive 済みのリポジトリ（`archived_at` を持つエントリ）は **�
 ```
 
 **更新可能フィールド:**
-- `github_username` - GitHubユーザー名
 - `repository_type` - リポジトリタイプ
 - `review_flow` - draft PR サイクル対象か（true / false）
 - その他のカスタムフィールド
 
+`github_username` は `update` では設定できず、エラーになります。複数所有者を持つ
+リスト型のため、書き込み口を [edit コマンド](#edit-コマンド) の `--set-owners` に
+1 本化しています。
+
 **使用例:**
 ```bash
-./registry-manager update k21rs001-sotsuron github_username student001
 ./registry-manager update k21rs001-fit26 review_flow true
+./registry-manager update k21rs001-jsai2026 repository_type other
 ```
 
 ### protect コマンド
@@ -368,11 +374,14 @@ thesis-monitor pr-stats --type thesis --sort updated -r
 
 ### edit コマンド
 
-リポジトリの GitHub オーナーを編集します。
+リポジトリの GitHub オーナーを編集します。オーナー（`github_username`）への
+書き込みはこのコマンドだけが行います（`update` は拒否します）。
 
 ```bash
 ./registry-manager edit REPO_NAME [--add-owner USER | --remove-owner USER | --set-owners USER1,USER2]
 ```
+
+`--dry-run` は受け付けません。
 
 ### infer-student-id コマンド
 
